@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+{% block title %}Relatório {{ report.month_label }} — {{ report.client.name }}{% endblock %}
+{% block page_title %}Relatório — {{ report.client.name }} — {{ report.month_label }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{% url 'client_detail' report.client.pk %}" class="btn btn-sm btn-outline-secondary me-2">
+  <i class="bi bi-arrow-left me-1"></i>Voltar
+</a>
+{% if report.pdf_file %}
+<a href="{% url 'download_pdf' report.pk %}" class="btn btn-sm btn-outline-success me-2">
+  <i class="bi bi-download me-1"></i>Baixar PDF
+</a>
+{% endif %}
+<button class="btn btn-sm btn-primary" onclick="triggerReport({{ report.pk }})">
+  <i class="bi bi-arrow-clockwise me-1"></i>Regenerar
+</button>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .kpi-card { border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px 20px; text-align: center; }
+  .kpi-val { font-size: 1.8rem; font-weight: 700; }
+  .kpi-lbl { font-size: .8rem; color: #6b7280; }
+  .section-header { font-weight: 600; color: #1d4ed8; border-bottom: 2px solid #bfdbfe; padding-bottom: 6px; margin: 28px 0 16px; }
+  .star { color: #f59e0b; font-size: 1.2rem; }
+  .star-empty { color: #d1d5db; font-size: 1.2rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Status bar -->
+<div class="card p-3 mb-4 d-flex flex-row align-items-center gap-3">
+  <span class="badge-status badge-{{ report.status }} fs-6">{{ report.get_status_display }}</span>
+  {% if report.sent_at %}
+  <span class="text-muted small"><i class="bi bi-send-check me-1"></i>Enviado em {{ report.sent_at|date:"d/m/Y H:i" }}</span>
+  {% endif %}
+  {% if report.error_message %}
+  <span class="text-danger small"><i class="bi bi-exclamation-triangle me-1"></i>{{ report.error_message }}</span>
+  {% endif %}
+</div>
+
+{% if digisac and not digisac.error %}
+<!-- ── ATENDIMENTOS ── -->
+<h5 class="section-header"><i class="bi bi-headset me-2"></i>Atendimentos — Digisac</h5>
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-2"><div class="kpi-card"><div class="kpi-val text-primary">{{ digisac.total_tickets }}</div><div class="kpi-lbl">Total</div></div></div>
+  <div class="col-6 col-md-2"><div class="kpi-card"><div class="kpi-val text-success">{{ digisac.closed_tickets }}</div><div class="kpi-lbl">Encerrados</div></div></div>
+  <div class="col-6 col-md-2"><div class="kpi-card"><div class="kpi-val text-warning">{{ digisac.open_tickets }}</div><div class="kpi-lbl">Em aberto</div></div></div>
+  <div class="col-6 col-md-3"><div class="kpi-card"><div class="kpi-val" style="font-size:1.4rem;">{{ digisac.avg_first_response_minutes }}<small>min</small></div><div class="kpi-lbl">1ª Resposta</div></div></div>
+  <div class="col-6 col-md-3"><div class="kpi-card"><div class="kpi-val" style="font-size:1.4rem;">{{ digisac.avg_resolution_minutes }}<small>min</small></div><div class="kpi-lbl">Resolução</div></div></div>
+</div>
+
+<div class="row g-3 mb-4">
+  <!-- Satisfaction -->
+  <div class="col-md-4">
+    <div class="card p-4 h-100 text-center">
+      <div class="text-muted small mb-1">Satisfação Geral</div>
+      <div style="font-size:3rem;font-weight:700;color:#1d4ed8;">{{ digisac.ratings.average_score }}</div>
+      <div class="mb-1">
+        {% for s in stars %}
+          {% if s == "full" %}<span class="star">★</span>{% elif s == "half" %}<span class="star">⯨</span>{% else %}<span class="star-empty">☆</span>{% endif %}
+        {% endfor %}
+      </div>
+      <div class="text-muted small">{{ digisac.ratings.total }} avaliações</div>
+      <div class="fw-semibold mt-1" style="color:{{ satisfaction_color }};">{{ satisfaction_label }}</div>
+    </div>
+  </div>
+  <!-- Tickets by day chart -->
+  <div class="col-md-8">
+    <div class="card p-3 h-100">
+      <div class="text-muted small mb-2">Chamados por Dia</div>
+      <canvas id="ticketsByDayChart" style="max-height:180px;"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Category & agents tables -->
+<div class="row g-3 mb-4">
+  {% if digisac.tickets_by_category %}
+  <div class="col-md-5">
+    <div class="card h-100">
+      <div class="card-header bg-white small fw-semibold py-2">Por Categoria</div>
+      <table class="table table-sm mb-0">
+        <tbody>
+          {% for item in digisac.tickets_by_category %}
+          <tr><td>{{ item.category }}</td><td class="text-end fw-medium">{{ item.count }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  {% if digisac.top_agents %}
+  <div class="col-md-7">
+    <div class="card h-100">
+      <div class="card-header bg-white small fw-semibold py-2">Desempenho por Agente</div>
+      <table class="table table-sm mb-0">
+        <thead class="table-light"><tr><th>Agente</th><th class="text-end">Chamados</th><th class="text-end">Nota</th></tr></thead>
+        <tbody>
+          {% for agent in digisac.top_agents %}
+          <tr>
+            <td>{{ agent.name }}</td>
+            <td class="text-end">{{ agent.tickets }}</td>
+            <td class="text-end">{% if agent.avg_score %}{{ agent.avg_score }} ★{% else %}—{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if milvus and not milvus.error %}
+<!-- ── ATIVOS ── -->
+<h5 class="section-header"><i class="bi bi-pc-display me-2"></i>Inventário de Ativos — Milvus</h5>
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-3"><div class="kpi-card"><div class="kpi-val text-primary">{{ milvus.total_assets }}</div><div class="kpi-lbl">Total</div></div></div>
+  <div class="col-6 col-md-3"><div class="kpi-card"><div class="kpi-val text-success">{{ milvus.assets_online }}</div><div class="kpi-lbl">Online</div></div></div>
+  <div class="col-6 col-md-3"><div class="kpi-card"><div class="kpi-val text-danger">{{ milvus.assets_offline }}</div><div class="kpi-lbl">Offline</div></div></div>
+  <div class="col-6 col-md-3"><div class="kpi-card"><div class="kpi-val text-warning">{{ milvus.assets_with_alerts }}</div><div class="kpi-lbl">Com Alertas</div></div></div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card p-3 h-100">
+      <div class="text-muted small mb-2">Ativos por Tipo</div>
+      <canvas id="assetsByTypeChart" style="max-height:180px;"></canvas>
+    </div>
+  </div>
+  <div class="col-md-8">
+    <div class="card h-100">
+      <div class="card-header bg-white small fw-semibold py-2">Lista de Ativos</div>
+      <div style="max-height:220px;overflow-y:auto;">
+        <table class="table table-sm mb-0">
+          <thead class="table-light sticky-top"><tr><th>Nome</th><th>OS</th><th>Status</th><th class="text-end">Alertas</th></tr></thead>
+          <tbody>
+            {% for a in milvus.assets %}
+            <tr>
+              <td>{{ a.name }}</td>
+              <td class="text-muted small">{{ a.os }}</td>
+              <td>
+                {% if a.status == "online" or a.status == "ativo" %}
+                <span class="badge-status badge-sent">Online</span>
+                {% else %}
+                <span class="badge-status badge-error">Offline</span>
+                {% endif %}
+              </td>
+              <td class="text-end {% if a.alerts %}text-danger fw-bold{% endif %}">{{ a.alerts }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if prtg and not prtg.error %}
+<!-- ── SERVIDORES ── -->
+<h5 class="section-header"><i class="bi bi-server me-2"></i>Monitoramento de Servidores — PRTG</h5>
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-2"><div class="kpi-card"><div class="kpi-val text-primary">{{ prtg.total_sensors }}</div><div class="kpi-lbl">Sensores</div></div></div>
+  <div class="col-6 col-md-2"><div class="kpi-card"><div class="kpi-val text-success">{{ prtg.sensors_ok }}</div><div class="kpi-lbl">OK</div></div></div>
+  <div class="col-6 col-md-2"><div class="kpi-card"><div class="kpi-val text-warning">{{ prtg.sensors_warning }}</div><div class="kpi-lbl">Atenção</div></div></div>
+  <div class="col-6 col-md-2"><div class="kpi-card"><div class="kpi-val text-danger">{{ prtg.sensors_error }}</div><div class="kpi-lbl">Erro</div></div></div>
+  <div class="col-6 col-md-4">
+    <div class="kpi-card">
+      <div class="kpi-val" style="color:{% if prtg.uptime_percent >= 99 %}#16a34a{% elif prtg.uptime_percent >= 95 %}#d97706{% else %}#dc2626{% endif %};">{{ prtg.uptime_percent }}%</div>
+      <div class="kpi-lbl">Disponibilidade</div>
+      <div class="progress mt-2" style="height:8px;">
+        <div class="progress-bar bg-success" style="width:{{ prtg.uptime_percent }}%;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if prtg.devices %}
+<div class="card mb-3">
+  <div class="card-header bg-white small fw-semibold py-2">Dispositivos</div>
+  <table class="table table-sm mb-0">
+    <thead class="table-light"><tr><th>Dispositivo</th><th>Host</th><th class="text-center text-success">OK</th><th class="text-center text-warning">Atenção</th><th class="text-center text-danger">Erro</th></tr></thead>
+    <tbody>
+      {% for dev in prtg.devices %}
+      <tr>
+        <td class="fw-medium">{{ dev.name }}</td>
+        <td class="text-muted small">{{ dev.host }}</td>
+        <td class="text-center">{{ dev.sensors_ok }}</td>
+        <td class="text-center">{{ dev.sensors_warning }}</td>
+        <td class="text-center {% if dev.sensors_error %}text-danger fw-bold{% endif %}">{{ dev.sensors_error }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if prtg.top_alerts %}
+<div class="card mb-4">
+  <div class="card-header bg-white small fw-semibold py-2 text-danger"><i class="bi bi-exclamation-triangle me-1"></i>Alertas do Período</div>
+  <table class="table table-sm mb-0">
+    <thead class="table-light"><tr><th>Sensor</th><th>Dispositivo</th><th>Mensagem</th><th>Desde</th></tr></thead>
+    <tbody>
+      {% for alert in prtg.top_alerts %}
+      <tr><td>{{ alert.sensor }}</td><td>{{ alert.device }}</td><td class="text-muted small">{{ alert.message }}</td><td class="small">{{ alert.since }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const digisac = {{ digisac_json|safe }};
+const milvus = {{ milvus_json|safe }};
+const prtg = {{ prtg_json|safe }};
+
+// Tickets by day chart
+if (digisac.tickets_by_day && digisac.tickets_by_day.length) {
+  const ctx = document.getElementById('ticketsByDayChart');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: digisac.tickets_by_day.map(d => d.date),
+      datasets: [{
+        label: 'Chamados',
+        data: digisac.tickets_by_day.map(d => d.count),
+        backgroundColor: 'rgba(29,78,216,.7)',
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: { x: { ticks: { maxTicksLimit: 10, font: { size: 10 } } }, y: { beginAtZero: true } },
+      responsive: true, maintainAspectRatio: false,
+    }
+  });
+}
+
+// Assets by type doughnut
+if (milvus.assets_by_type && milvus.assets_by_type.length) {
+  const ctx2 = document.getElementById('assetsByTypeChart');
+  new Chart(ctx2, {
+    type: 'doughnut',
+    data: {
+      labels: milvus.assets_by_type.map(a => a.type),
+      datasets: [{
+        data: milvus.assets_by_type.map(a => a.count),
+        backgroundColor: ['#1d4ed8','#0ea5e9','#6366f1','#8b5cf6','#ec4899','#f59e0b'],
+      }]
+    },
+    options: { plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } }, responsive: true, maintainAspectRatio: false }
+  });
+}
+
+function triggerReport(id) {
+  if (!confirm('Regenerar este relatório?')) return;
+  fetch(`/relatorios/${id}/gerar/`, { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' } })
+    .then(r => r.json())
+    .then(() => { alert('Relatório enfileirado para geração!'); location.reload(); });
+}
+</script>
+{% endblock %}

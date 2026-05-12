@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Relatório Mensal — {{ client.name }} — {{ report.month_label }}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 10pt; color: #1f2937; line-height: 1.5; }
+
+  /* ── Header ── */
+  .header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 3px solid #1d4ed8; margin-bottom: 20px; }
+  .header .company { font-size: 18pt; font-weight: bold; color: #1d4ed8; }
+  .header .report-title { text-align: right; }
+  .header .report-title h1 { font-size: 13pt; color: #1f2937; }
+  .header .report-title p { font-size: 9pt; color: #6b7280; }
+
+  /* ── Client info ── */
+  .client-box { background: #f0f9ff; border-left: 4px solid #1d4ed8; padding: 10px 14px; margin-bottom: 20px; border-radius: 0 6px 6px 0; }
+  .client-box h2 { font-size: 12pt; color: #1d4ed8; }
+  .client-box p { font-size: 9pt; color: #374151; }
+
+  /* ── Section titles ── */
+  .section-title { font-size: 12pt; font-weight: bold; color: #1d4ed8; border-bottom: 1px solid #bfdbfe; padding-bottom: 4px; margin: 22px 0 12px; }
+
+  /* ── KPI cards ── */
+  .kpi-grid { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  .kpi-card { flex: 1; min-width: 100px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; text-align: center; }
+  .kpi-card .kpi-value { font-size: 20pt; font-weight: bold; color: #1d4ed8; }
+  .kpi-card .kpi-label { font-size: 8pt; color: #6b7280; margin-top: 2px; }
+  .kpi-card.green .kpi-value { color: #16a34a; }
+  .kpi-card.red .kpi-value { color: #dc2626; }
+  .kpi-card.yellow .kpi-value { color: #d97706; }
+
+  /* ── Satisfaction ── */
+  .satisfaction-box { display: flex; align-items: center; gap: 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 18px; margin-bottom: 14px; }
+  .sat-score { font-size: 32pt; font-weight: bold; }
+  .sat-label { font-size: 11pt; font-weight: bold; }
+  .sat-meta { font-size: 9pt; color: #6b7280; }
+  .stars { font-size: 16pt; letter-spacing: 2px; }
+  .star-full { color: #f59e0b; }
+  .star-half { color: #f59e0b; }
+  .star-empty { color: #d1d5db; }
+
+  /* ── Rating bar ── */
+  .rating-bar-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; font-size: 9pt; }
+  .rating-bar-bg { flex: 1; background: #e5e7eb; border-radius: 4px; height: 10px; }
+  .rating-bar-fill { background: #f59e0b; border-radius: 4px; height: 10px; }
+  .rating-bar-label { width: 14px; text-align: right; }
+  .rating-bar-count { width: 24px; color: #6b7280; }
+
+  /* ── Tables ── */
+  table { width: 100%; border-collapse: collapse; font-size: 9pt; margin-bottom: 12px; }
+  th { background: #1d4ed8; color: #fff; padding: 6px 8px; text-align: left; font-size: 8.5pt; }
+  td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; }
+  tr:nth-child(even) td { background: #f8fafc; }
+
+  /* ── Status badge ── */
+  .badge { display: inline-block; padding: 2px 7px; border-radius: 999px; font-size: 8pt; font-weight: bold; }
+  .badge-green { background: #dcfce7; color: #15803d; }
+  .badge-red { background: #fee2e2; color: #b91c1c; }
+  .badge-yellow { background: #fef9c3; color: #a16207; }
+  .badge-gray { background: #f3f4f6; color: #374151; }
+
+  /* ── PRTG uptime bar ── */
+  .uptime-bar-bg { background: #e5e7eb; border-radius: 6px; height: 14px; width: 100%; }
+  .uptime-bar-fill { background: #22c55e; border-radius: 6px; height: 14px; }
+
+  /* ── Footer ── */
+  .footer { margin-top: 30px; padding-top: 10px; border-top: 1px solid #e5e7eb; font-size: 8pt; color: #9ca3af; text-align: center; }
+
+  /* ── Page break ── */
+  .page-break { page-break-after: always; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="company">
+    {% if company_logo_url %}<img src="{{ company_logo_url }}" height="40" alt="{{ company_name }}">
+    {% else %}{{ company_name }}{% endif %}
+  </div>
+  <div class="report-title">
+    <h1>Relatório Gerencial Mensal</h1>
+    <p>{{ report.month_label }} &nbsp;|&nbsp; Gerado em {% now "d/m/Y" %}</p>
+  </div>
+</div>
+
+<!-- CLIENT INFO -->
+<div class="client-box">
+  <h2>{{ client.name }}{% if client.company_name %} — {{ client.company_name }}{% endif %}</h2>
+  {% if client.cnpj %}<p>CNPJ: {{ client.cnpj }}</p>{% endif %}
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     SEÇÃO 1 — ATENDIMENTOS (DIGISAC)
+     ═══════════════════════════════════════════════════ -->
+{% if digisac and not digisac.error %}
+<div class="section-title">1. Atendimentos — Digisac</div>
+
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-value">{{ digisac.total_tickets }}</div>
+    <div class="kpi-label">Total de Chamados</div>
+  </div>
+  <div class="kpi-card green">
+    <div class="kpi-value">{{ digisac.closed_tickets }}</div>
+    <div class="kpi-label">Encerrados</div>
+  </div>
+  <div class="kpi-card yellow">
+    <div class="kpi-value">{{ digisac.open_tickets }}</div>
+    <div class="kpi-label">Em Aberto</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-value">{{ digisac.avg_first_response_minutes }}<span style="font-size:11pt">min</span></div>
+    <div class="kpi-label">Tempo médio 1ª resposta</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-value">{{ digisac.avg_resolution_minutes }}<span style="font-size:11pt">min</span></div>
+    <div class="kpi-label">Tempo médio resolução</div>
+  </div>
+</div>
+
+<!-- Satisfaction -->
+<div class="section-title" style="font-size:10.5pt;">1.1 Satisfação dos Atendimentos</div>
+
+{% with r=digisac.ratings %}
+<div class="satisfaction-box">
+  <div>
+    <div class="sat-score" style="color: {{ satisfaction_color }};">{{ avg_score }}</div>
+    <div class="stars">
+      {% for s in stars %}
+        {% if s == "full" %}<span class="star-full">★</span>
+        {% elif s == "half" %}<span class="star-half">½</span>
+        {% else %}<span class="star-empty">☆</span>{% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  <div>
+    <div class="sat-label" style="color: {{ satisfaction_color }};">{{ satisfaction_label }}</div>
+    <div class="sat-meta">{{ r.total }} avaliações no período</div>
+    <div style="margin-top: 8px;">
+      {% for star in "54321" %}
+        {% with count=r.distribution|default_if_none:0 %}
+        <div class="rating-bar-row">
+          <div class="rating-bar-label">{{ star }}★</div>
+          <div class="rating-bar-bg">
+            {% if r.total > 0 %}
+            <div class="rating-bar-fill" style="width: {% widthratio r.distribution|default:0 r.total 100 %}%;"></div>
+            {% endif %}
+          </div>
+          <div class="rating-bar-count">{{ r.distribution|default:0 }}</div>
+        </div>
+        {% endwith %}
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endwith %}
+
+<!-- Tickets by category -->
+{% if digisac.tickets_by_category %}
+<div class="section-title" style="font-size:10.5pt;">1.2 Chamados por Categoria</div>
+<table>
+  <thead><tr><th>Categoria</th><th style="width:80px;text-align:right;">Qtd</th></tr></thead>
+  <tbody>
+    {% for item in digisac.tickets_by_category %}
+    <tr><td>{{ item.category }}</td><td style="text-align:right;">{{ item.count }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<!-- Top agents -->
+{% if digisac.top_agents %}
+<div class="section-title" style="font-size:10.5pt;">1.3 Desempenho por Agente</div>
+<table>
+  <thead>
+    <tr>
+      <th>Agente</th>
+      <th style="text-align:right;width:80px;">Chamados</th>
+      <th style="text-align:right;width:100px;">Nota média</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for agent in digisac.top_agents %}
+    <tr>
+      <td>{{ agent.name }}</td>
+      <td style="text-align:right;">{{ agent.tickets }}</td>
+      <td style="text-align:right;">
+        {% if agent.avg_score %}{{ agent.avg_score }} ★{% else %}—{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% elif digisac.error %}
+<p style="color:#dc2626;font-size:9pt;">Erro ao coletar dados do Digisac: {{ digisac.error }}</p>
+{% else %}
+<p style="color:#6b7280;font-size:9pt;font-style:italic;">Integração com Digisac não configurada para este cliente.</p>
+{% endif %}
+
+<div class="page-break"></div>
+
+<!-- ═══════════════════════════════════════════════════
+     SEÇÃO 2 — ATIVOS (MILVUS)
+     ═══════════════════════════════════════════════════ -->
+{% if milvus and not milvus.error %}
+<div class="section-title">2. Inventário de Ativos — Milvus</div>
+
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-value">{{ milvus.total_assets }}</div>
+    <div class="kpi-label">Total de Ativos</div>
+  </div>
+  <div class="kpi-card green">
+    <div class="kpi-value">{{ milvus.assets_online }}</div>
+    <div class="kpi-label">Online</div>
+  </div>
+  <div class="kpi-card red">
+    <div class="kpi-value">{{ milvus.assets_offline }}</div>
+    <div class="kpi-label">Offline</div>
+  </div>
+  <div class="kpi-card yellow">
+    <div class="kpi-value">{{ milvus.assets_with_alerts }}</div>
+    <div class="kpi-label">Com alertas</div>
+  </div>
+</div>
+
+<!-- Assets by type -->
+{% if milvus.assets_by_type %}
+<div class="section-title" style="font-size:10.5pt;">2.1 Ativos por Tipo</div>
+<table>
+  <thead><tr><th>Tipo</th><th style="width:80px;text-align:right;">Qtd</th></tr></thead>
+  <tbody>
+    {% for item in milvus.assets_by_type %}
+    <tr><td>{{ item.type }}</td><td style="text-align:right;">{{ item.count }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<!-- Asset list -->
+{% if milvus.assets %}
+<div class="section-title" style="font-size:10.5pt;">2.2 Lista de Ativos</div>
+<table>
+  <thead>
+    <tr>
+      <th>Nome</th><th>Tipo</th><th>Sistema Operacional</th>
+      <th style="text-align:center;width:70px;">Status</th>
+      <th style="text-align:right;width:60px;">Alertas</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for asset in milvus.assets %}
+    <tr>
+      <td>{{ asset.name }}</td>
+      <td>{{ asset.type }}</td>
+      <td>{{ asset.os }}</td>
+      <td style="text-align:center;">
+        {% if asset.status == "online" or asset.status == "ativo" %}
+          <span class="badge badge-green">Online</span>
+        {% else %}
+          <span class="badge badge-red">Offline</span>
+        {% endif %}
+      </td>
+      <td style="text-align:right;">
+        {% if asset.alerts %}<span style="color:#dc2626;font-weight:bold;">{{ asset.alerts }}</span>
+        {% else %}0{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% elif milvus.error %}
+<p style="color:#dc2626;font-size:9pt;">Erro ao coletar dados do Milvus: {{ milvus.error }}</p>
+{% else %}
+<p style="color:#6b7280;font-size:9pt;font-style:italic;">Integração com Milvus não configurada para este cliente.</p>
+{% endif %}
+
+<div class="page-break"></div>
+
+<!-- ═══════════════════════════════════════════════════
+     SEÇÃO 3 — SERVIDORES (PRTG)
+     ═══════════════════════════════════════════════════ -->
+{% if prtg and not prtg.error %}
+<div class="section-title">3. Monitoramento de Servidores — PRTG</div>
+
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-value">{{ prtg.total_sensors }}</div>
+    <div class="kpi-label">Total de Sensores</div>
+  </div>
+  <div class="kpi-card green">
+    <div class="kpi-value">{{ prtg.sensors_ok }}</div>
+    <div class="kpi-label">OK</div>
+  </div>
+  <div class="kpi-card yellow">
+    <div class="kpi-value">{{ prtg.sensors_warning }}</div>
+    <div class="kpi-label">Atenção</div>
+  </div>
+  <div class="kpi-card red">
+    <div class="kpi-value">{{ prtg.sensors_error }}</div>
+    <div class="kpi-label">Com Erro</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-value">{{ prtg.uptime_percent }}%</div>
+    <div class="kpi-label">Disponibilidade</div>
+  </div>
+</div>
+
+<!-- Uptime bar -->
+<div style="margin-bottom:16px;">
+  <div style="font-size:9pt;color:#374151;margin-bottom:4px;">Disponibilidade geral: <strong>{{ prtg.uptime_percent }}%</strong></div>
+  <div class="uptime-bar-bg">
+    <div class="uptime-bar-fill" style="width:{{ prtg.uptime_percent }}%;"></div>
+  </div>
+</div>
+
+<!-- Devices table -->
+{% if prtg.devices %}
+<div class="section-title" style="font-size:10.5pt;">3.1 Dispositivos Monitorados</div>
+<table>
+  <thead>
+    <tr>
+      <th>Dispositivo</th><th>Host</th>
+      <th style="text-align:right;width:60px;">✓ OK</th>
+      <th style="text-align:right;width:70px;">⚠ Atenção</th>
+      <th style="text-align:right;width:60px;">✗ Erro</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for dev in prtg.devices %}
+    <tr>
+      <td>{{ dev.name }}</td>
+      <td style="font-size:8pt;color:#6b7280;">{{ dev.host }}</td>
+      <td style="text-align:right;color:#16a34a;">{{ dev.sensors_ok }}</td>
+      <td style="text-align:right;color:#d97706;">{{ dev.sensors_warning }}</td>
+      <td style="text-align:right;color:#dc2626;">{{ dev.sensors_error }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<!-- Top alerts -->
+{% if prtg.top_alerts %}
+<div class="section-title" style="font-size:10.5pt;">3.2 Alertas do Período</div>
+<table>
+  <thead>
+    <tr><th>Sensor</th><th>Dispositivo</th><th>Mensagem</th><th style="width:100px;">Desde</th></tr>
+  </thead>
+  <tbody>
+    {% for alert in prtg.top_alerts %}
+    <tr>
+      <td>{{ alert.sensor }}</td>
+      <td>{{ alert.device }}</td>
+      <td style="font-size:8pt;color:#6b7280;">{{ alert.message }}</td>
+      <td style="font-size:8pt;">{{ alert.since }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% elif prtg.error %}
+<p style="color:#dc2626;font-size:9pt;">Erro ao coletar dados do PRTG: {{ prtg.error }}</p>
+{% else %}
+<p style="color:#6b7280;font-size:9pt;font-style:italic;">Integração com PRTG não configurada para este cliente.</p>
+{% endif %}
+
+<!-- FOOTER -->
+<div class="footer">
+  Relatório gerado automaticamente por {{ company_name }} &nbsp;|&nbsp; {{ report.month_label }}
+  &nbsp;|&nbsp; Este documento é confidencial e destinado exclusivamente ao cliente mencionado acima.
+</div>
+
+</body>
+</html>

@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Suzuki Tec{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+
+{% block topbar_actions %}
+<a href="/admin/clients/client/add/" class="btn btn-sm btn-primary">
+  <i class="bi bi-plus-lg me-1"></i>Novo Cliente
+</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- Stats row -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card stat-card p-3 h-100">
+      <div class="text-muted small mb-1"><i class="bi bi-people me-1"></i>Clientes ativos</div>
+      <div class="stat-value text-primary">{{ stats.total_clients }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card stat-card p-3 h-100">
+      <div class="text-muted small mb-1"><i class="bi bi-send-check me-1"></i>Enviados</div>
+      <div class="stat-value text-success">{{ stats.reports_sent }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card stat-card p-3 h-100">
+      <div class="text-muted small mb-1"><i class="bi bi-hourglass-split me-1"></i>Em processamento</div>
+      <div class="stat-value text-warning">{{ stats.reports_pending }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card stat-card p-3 h-100">
+      <div class="text-muted small mb-1"><i class="bi bi-x-circle me-1"></i>Com erro</div>
+      <div class="stat-value text-danger">{{ stats.reports_error }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+
+  <!-- Clients list -->
+  <div class="col-md-5">
+    <div class="card h-100">
+      <div class="card-header bg-white fw-semibold py-3">
+        <i class="bi bi-people-fill me-2 text-primary"></i>Clientes
+      </div>
+      <div class="list-group list-group-flush">
+        {% for client in clients %}
+        <a href="{% url 'client_detail' client.pk %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+          <div>
+            <div class="fw-medium">{{ client.name }}</div>
+            <small class="text-muted">{{ client.email }}</small>
+          </div>
+          <div class="d-flex gap-1 align-items-center">
+            {% with latest=client.reports.first %}
+            {% if latest %}
+            <span class="badge-status badge-{{ latest.status }}">{{ latest.get_status_display }}</span>
+            {% else %}
+            <span class="badge-status badge-pending">Sem relatório</span>
+            {% endif %}
+            {% endwith %}
+            <i class="bi bi-chevron-right text-muted ms-2"></i>
+          </div>
+        </a>
+        {% empty %}
+        <div class="list-group-item text-muted">Nenhum cliente cadastrado.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent reports -->
+  <div class="col-md-7">
+    <div class="card h-100">
+      <div class="card-header bg-white fw-semibold py-3">
+        <i class="bi bi-file-earmark-bar-graph me-2 text-primary"></i>Relatórios Recentes
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Cliente</th>
+              <th>Mês</th>
+              <th>Status</th>
+              <th>Enviado em</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in recent_reports %}
+            <tr>
+              <td class="fw-medium">{{ r.client.name }}</td>
+              <td>{{ r.month_label }}</td>
+              <td><span class="badge-status badge-{{ r.status }}">{{ r.get_status_display }}</span></td>
+              <td class="text-muted small">
+                {% if r.sent_at %}{{ r.sent_at|date:"d/m/Y H:i" }}{% else %}—{% endif %}
+              </td>
+              <td>
+                <a href="{% url 'report_detail' r.pk %}" class="btn btn-sm btn-outline-primary py-0">
+                  <i class="bi bi-eye"></i>
+                </a>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5" class="text-muted text-center py-4">Nenhum relatório ainda.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

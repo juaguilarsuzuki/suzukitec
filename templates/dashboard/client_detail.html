@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}{{ client.name }} — Suzuki Tec{% endblock %}
+{% block page_title %}{{ client.name }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{% url 'dashboard' %}" class="btn btn-sm btn-outline-secondary me-2">
+  <i class="bi bi-arrow-left me-1"></i>Voltar
+</a>
+<a href="/admin/clients/client/{{ client.pk }}/change/" class="btn btn-sm btn-outline-primary">
+  <i class="bi bi-pencil me-1"></i>Editar
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="card p-4">
+      <h6 class="text-muted mb-3">Informações do Cliente</h6>
+      <dl class="row mb-0">
+        {% if client.company_name %}<dt class="col-5 text-muted">Razão Social</dt><dd class="col-7">{{ client.company_name }}</dd>{% endif %}
+        {% if client.cnpj %}<dt class="col-5 text-muted">CNPJ</dt><dd class="col-7">{{ client.cnpj }}</dd>{% endif %}
+        <dt class="col-5 text-muted">E-mail</dt><dd class="col-7">{{ client.email }}</dd>
+        {% if client.phone %}<dt class="col-5 text-muted">Telefone</dt><dd class="col-7">{{ client.phone }}</dd>{% endif %}
+        <dt class="col-5 text-muted">Relatório mensal</dt>
+        <dd class="col-7">
+          {% if client.send_report %}<span class="badge-status badge-sent">Ativo</span>
+          {% else %}<span class="badge-status badge-pending">Desativado</span>{% endif %}
+        </dd>
+      </dl>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card p-4">
+      <h6 class="text-muted mb-3">Integrações Configuradas</h6>
+      {% for config in client.tool_configs.all %}
+      <div class="d-flex align-items-center mb-2">
+        <span class="badge bg-primary me-2">{{ config.get_tool_display }}</span>
+        <span class="text-muted small">ID: {{ config.external_id }}</span>
+        {% if not config.is_active %}<span class="badge-status badge-pending ms-2">Inativo</span>{% endif %}
+      </div>
+      {% empty %}
+      <p class="text-muted small">Nenhuma integração configurada.</p>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header bg-white fw-semibold py-3 d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-file-earmark-bar-graph me-2 text-primary"></i>Histórico de Relatórios</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Mês</th><th>Status</th><th>Gerado em</th><th>Enviado em</th><th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in reports %}
+        <tr>
+          <td class="fw-medium">{{ r.month_label }}</td>
+          <td><span class="badge-status badge-{{ r.status }}">{{ r.get_status_display }}</span></td>
+          <td class="text-muted small">{{ r.created_at|date:"d/m/Y H:i" }}</td>
+          <td class="text-muted small">{% if r.sent_at %}{{ r.sent_at|date:"d/m/Y H:i" }}{% else %}—{% endif %}</td>
+          <td>
+            <a href="{% url 'report_detail' r.pk %}" class="btn btn-sm btn-outline-primary py-0 me-1">
+              <i class="bi bi-eye"></i>
+            </a>
+            {% if r.pdf_file %}
+            <a href="{% url 'download_pdf' r.pk %}" class="btn btn-sm btn-outline-secondary py-0">
+              <i class="bi bi-download"></i>
+            </a>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="text-muted text-center py-4">Nenhum relatório encontrado.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
