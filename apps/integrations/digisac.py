@@ -1,41 +1,33 @@
 """
 Digisac integration — fetches tickets, service summaries and ratings.
-
-Digisac REST API docs: https://docs.digisac.com.br/
-Authentication: Bearer token via DIGISAC_TOKEN env var.
-
-Collected data shape:
-{
-    "total_tickets": int,
-    "open_tickets": int,
-    "closed_tickets": int,
-    "avg_first_response_minutes": float,
-    "avg_resolution_minutes": float,
-    "ratings": {
-        "total": int,
-        "average_score": float,   # 1-5
-        "distribution": {1: int, 2: int, 3: int, 4: int, 5: int}
-    },
-    "tickets_by_day": [{"date": "YYYY-MM-DD", "count": int}, ...],
-    "tickets_by_category": [{"category": str, "count": int}, ...],
-    "top_agents": [{"name": str, "tickets": int, "avg_score": float}, ...],
-    "ticket_samples": [{"id": str, "subject": str, "status": str, "score": int|None}, ...]
-}
+Credentials are read from SystemSettings (admin panel), falling back to .env.
 """
 import logging
 from datetime import date
-
-from django.conf import settings
 
 from .base import BaseAPIClient
 
 logger = logging.getLogger(__name__)
 
 
+def _get_settings():
+    try:
+        from apps.clients.models import SystemSettings
+        return SystemSettings.load()
+    except Exception:
+        return None
+
+
 class DigisacClient(BaseAPIClient):
     def __init__(self):
-        self.base_url = settings.DIGISAC_BASE_URL
-        self.token = settings.DIGISAC_TOKEN
+        cfg = _get_settings()
+        if cfg and cfg.digisac_token:
+            self.base_url = cfg.digisac_base_url
+            self.token = cfg.digisac_token
+        else:
+            from django.conf import settings
+            self.base_url = settings.DIGISAC_BASE_URL
+            self.token = settings.DIGISAC_TOKEN
 
     @property
     def _headers(self):
@@ -64,10 +56,8 @@ class DigisacClient(BaseAPIClient):
     def collect(self, external_id: str, start: date, end: date, extra: dict = None) -> dict:
         extra = extra or {}
         department_id = extra.get("department_id", external_id)
-
         tickets = self._get_tickets(department_id, start, end)
         ratings = self._get_ratings(department_id, start, end)
-
         return self._process(tickets, ratings)
 
     def _process(self, tickets: list, ratings: list) -> dict:
@@ -76,7 +66,6 @@ class DigisacClient(BaseAPIClient):
         open_count = sum(1 for t in tickets if t.get("status") in ("open", "aberto"))
         closed_count = sum(1 for t in tickets if t.get("status") in ("closed", "fechado", "resolved"))
 
-        # Avg response / resolution times (in minutes)
         first_responses = [
             t.get("firstResponseMinutes") or t.get("first_response_minutes", 0)
             for t in tickets if t.get("firstResponseMinutes") or t.get("first_response_minutes")
@@ -89,14 +78,12 @@ class DigisacClient(BaseAPIClient):
         avg_first = round(sum(first_responses) / len(first_responses), 1) if first_responses else 0
         avg_res = round(sum(resolutions) / len(resolutions), 1) if resolutions else 0
 
-        # Ratings
         scores = [r.get("score") or r.get("rating", 0) for r in ratings if r.get("score") or r.get("rating")]
         distribution = defaultdict(int)
         for s in scores:
             distribution[int(s)] += 1
         avg_score = round(sum(scores) / len(scores), 2) if scores else 0.0
 
-        # Tickets by day
         by_day = defaultdict(int)
         for t in tickets:
             day = (t.get("createdAt") or t.get("created_at", ""))[:10]
@@ -104,7 +91,6 @@ class DigisacClient(BaseAPIClient):
                 by_day[day] += 1
         tickets_by_day = [{"date": d, "count": c} for d, c in sorted(by_day.items())]
 
-        # Tickets by category
         by_cat = defaultdict(int)
         for t in tickets:
             cat = t.get("category") or t.get("type") or "Sem categoria"
@@ -114,7 +100,6 @@ class DigisacClient(BaseAPIClient):
             for c, n in sorted(by_cat.items(), key=lambda x: -x[1])
         ]
 
-        # Top agents
         agent_tickets = defaultdict(list)
         agent_ratings = defaultdict(list)
         for t in tickets:
@@ -136,7 +121,6 @@ class DigisacClient(BaseAPIClient):
             })
         top_agents.sort(key=lambda x: -x["tickets"])
 
-        # Sample tickets (last 10 closed)
         closed_tickets = [t for t in tickets if t.get("status") in ("closed", "fechado", "resolved")]
         ticket_samples = [
             {
@@ -147,7 +131,6 @@ class DigisacClient(BaseAPIClient):
             }
             for t in closed_tickets[:10]
         ]
-        # Attach scores to samples
         ratings_by_ticket = {str(r.get("ticketId") or r.get("ticket_id", "")): r for r in ratings}
         for sample in ticket_samples:
             r = ratings_by_ticket.get(sample["id"])

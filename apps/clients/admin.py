@@ -1,12 +1,51 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import Client, ClientToolConfig
+from .models import Client, ClientToolConfig, SystemSettings
+
+
+@admin.register(SystemSettings)
+class SystemSettingsAdmin(admin.ModelAdmin):
+    fieldsets = (
+        ("Empresa", {
+            "fields": ("company_name", "company_logo_url"),
+        }),
+        ("E-mail (SMTP)", {
+            "fields": (
+                "email_host", "email_port", "email_use_tls",
+                "email_host_user", "email_host_password", "default_from_email",
+            ),
+            "description": (
+                "Configure o servidor de e-mail para envio dos relatórios. "
+                "Para Gmail, gere uma <strong>Senha de App</strong> em "
+                "Conta Google → Segurança → Senhas de app."
+            ),
+        }),
+        ("Digisac", {
+            "fields": ("digisac_base_url", "digisac_token"),
+        }),
+        ("Milvus", {
+            "fields": ("milvus_base_url", "milvus_token"),
+        }),
+    )
+    readonly_fields = ("updated_at",)
+
+    def has_add_permission(self, request):
+        return not SystemSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        # Redireciona direto para a tela de edição do registro único
+        from django.shortcuts import redirect
+        obj, _ = SystemSettings.objects.get_or_create(pk=1)
+        return redirect(f"/admin/clients/systemsettings/{obj.pk}/change/")
 
 
 class ClientToolConfigInline(admin.TabularInline):
     model = ClientToolConfig
     extra = 1
-    fields = ("tool", "external_id", "extra_config", "is_active")
+    fields = ("tool", "label", "external_id", "extra_config", "is_active")
 
 
 @admin.register(Client)
@@ -36,7 +75,10 @@ class ClientAdmin(admin.ModelAdmin):
     @admin.display(description="Relatórios")
     def report_count(self, obj):
         count = obj.reports.count()
-        return format_html('<a href="/admin/reports/monthlyreport/?client__id__exact={}">{} relatório(s)</a>', obj.pk, count)
+        return format_html(
+            '<a href="/admin/reports/monthlyreport/?client__id__exact={}">{} relatório(s)</a>',
+            obj.pk, count
+        )
 
     @admin.action(description="Gerar relatório do mês anterior")
     def trigger_report_generation(self, request, queryset):
@@ -57,6 +99,6 @@ class ClientAdmin(admin.ModelAdmin):
 
 @admin.register(ClientToolConfig)
 class ClientToolConfigAdmin(admin.ModelAdmin):
-    list_display = ("client", "tool", "external_id", "is_active")
+    list_display = ("client", "tool", "label", "external_id", "is_active")
     list_filter = ("tool", "is_active")
-    search_fields = ("client__name", "external_id")
+    search_fields = ("client__name", "external_id", "label")

@@ -6,15 +6,9 @@ from apps.clients.models import Client, ClientToolConfig
 
 from .digisac import DigisacClient
 from .milvus import MilvusClient
-from .prtg import PRTGClient
+from .prtg import collect_prtg_for_client
 
 logger = logging.getLogger(__name__)
-
-_CLIENTS = {
-    ClientToolConfig.Tool.DIGISAC: DigisacClient,
-    ClientToolConfig.Tool.MILVUS: MilvusClient,
-    ClientToolConfig.Tool.PRTG: PRTGClient,
-}
 
 
 def collect_client_data(client: Client, start: date, end: date) -> dict:
@@ -22,22 +16,45 @@ def collect_client_data(client: Client, start: date, end: date) -> dict:
     result = {"digisac": None, "milvus": None, "prtg": None}
 
     configs = client.tool_configs.filter(is_active=True)
-    for config in configs:
-        tool_key = config.tool
-        api_class = _CLIENTS.get(tool_key)
-        if not api_class:
-            continue
+
+    # Digisac — single config
+    digisac_configs = configs.filter(tool=ClientToolConfig.Tool.DIGISAC)
+    if digisac_configs.exists():
+        config = digisac_configs.first()
         try:
-            api = api_class()
-            result[tool_key] = api.collect(
+            result["digisac"] = DigisacClient().collect(
                 external_id=config.external_id,
-                start=start,
-                end=end,
+                start=start, end=end,
                 extra=config.extra_config,
             )
-            logger.info("Collected %s data for client %s", tool_key, client)
+            logger.info("Collected Digisac data for client %s", client)
         except Exception as exc:
-            logger.error("Failed to collect %s for client %s: %s", tool_key, client, exc)
-            result[tool_key] = {"error": str(exc)}
+            logger.error("Digisac failed for %s: %s", client, exc)
+            result["digisac"] = {"error": str(exc)}
+
+    # Milvus — single config
+    milvus_configs = configs.filter(tool=ClientToolConfig.Tool.MILVUS)
+    if milvus_configs.exists():
+        config = milvus_configs.first()
+        try:
+            result["milvus"] = MilvusClient().collect(
+                external_id=config.external_id,
+                start=start, end=end,
+                extra=config.extra_config,
+            )
+            logger.info("Collected Milvus data for client %s", client)
+        except Exception as exc:
+            logger.error("Milvus failed for %s: %s", client, exc)
+            result["milvus"] = {"error": str(exc)}
+
+    # PRTG — multiple configs supported
+    prtg_configs = list(configs.filter(tool=ClientToolConfig.Tool.PRTG))
+    if prtg_configs:
+        try:
+            result["prtg"] = collect_prtg_for_client(prtg_configs, start, end)
+            logger.info("Collected PRTG data for client %s (%d config(s))", client, len(prtg_configs))
+        except Exception as exc:
+            logger.error("PRTG failed for %s: %s", client, exc)
+            result["prtg"] = {"error": str(exc)}
 
     return result

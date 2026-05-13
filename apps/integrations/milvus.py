@@ -1,44 +1,33 @@
 """
 Milvus integration — fetches asset (computer) information for a client.
-
-Milvus REST API: https://api.milvus.com.br/
-Authentication: token via MILVUS_TOKEN env var.
-
-Collected data shape:
-{
-    "total_assets": int,
-    "assets_by_type": [{"type": str, "count": int}],
-    "assets_online": int,
-    "assets_offline": int,
-    "assets_with_alerts": int,
-    "assets": [
-        {
-            "id": str,
-            "name": str,
-            "type": str,
-            "os": str,
-            "last_seen": str,
-            "status": str,
-            "alerts": int,
-        },
-        ...
-    ]
-}
+Credentials are read from SystemSettings (admin panel), falling back to .env.
 """
 import logging
 from datetime import date
-
-from django.conf import settings
 
 from .base import BaseAPIClient
 
 logger = logging.getLogger(__name__)
 
 
+def _get_settings():
+    try:
+        from apps.clients.models import SystemSettings
+        return SystemSettings.load()
+    except Exception:
+        return None
+
+
 class MilvusClient(BaseAPIClient):
     def __init__(self):
-        self.base_url = settings.MILVUS_BASE_URL
-        self.token = settings.MILVUS_TOKEN
+        cfg = _get_settings()
+        if cfg and cfg.milvus_token:
+            self.base_url = cfg.milvus_base_url
+            self.token = cfg.milvus_token
+        else:
+            from django.conf import settings
+            self.base_url = settings.MILVUS_BASE_URL
+            self.token = settings.MILVUS_TOKEN
 
     @property
     def _headers(self):
@@ -58,8 +47,8 @@ class MilvusClient(BaseAPIClient):
 
         by_type = defaultdict(int)
         online = offline = with_alerts = 0
-
         processed = []
+
         for a in assets:
             status = (a.get("status") or a.get("connectionStatus") or "unknown").lower()
             asset_type = a.get("type") or a.get("deviceType") or "Computador"

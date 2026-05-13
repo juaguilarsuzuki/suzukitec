@@ -1,12 +1,29 @@
 """Sends the monthly report PDF to the client by email."""
 import logging
-from email.mime.application import MIMEApplication
 from pathlib import Path
 
-from django.conf import settings
 from django.core.mail import EmailMessage
 
 logger = logging.getLogger(__name__)
+
+
+def _load_email_settings():
+    """Returns (connection_params_dict, from_email, company_name) from DB or django settings."""
+    try:
+        from apps.clients.models import SystemSettings
+        cfg = SystemSettings.load()
+        if cfg.email_host_user:
+            return {
+                "host": cfg.email_host,
+                "port": cfg.email_port,
+                "use_tls": cfg.email_use_tls,
+                "username": cfg.email_host_user,
+                "password": cfg.email_host_password,
+            }, cfg.default_from_email, cfg.company_name
+    except Exception:
+        pass
+    from django.conf import settings
+    return None, settings.DEFAULT_FROM_EMAIL, settings.COMPANY_NAME
 
 
 def send_report_email(report) -> None:
@@ -15,23 +32,20 @@ def send_report_email(report) -> None:
     if not pdf_path.exists():
         raise FileNotFoundError(f"PDF not found: {pdf_path}")
 
-    subject = (
-        f"[{settings.COMPANY_NAME}] Relatório Mensal — "
-        f"{report.client.name} — {report.month_label}"
-    )
+    conn_params, from_email, company_name = _load_email_settings()
 
-    body = _build_body(report)
+    subject = f"[{company_name}] Relatório Mensal — {report.client.name} — {report.month_label}"
+    body = _build_body(report, company_name)
 
     recipients = [report.client.email]
     cc = report.client.cc_emails
 
-    msg = EmailMessage(
-        subject=subject,
-        body=body,
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        to=recipients,
-        cc=cc,
-    )
+    kwargs = {"subject": subject, "body": body, "from_email": from_email, "to": recipients, "cc": cc}
+    if conn_params:
+        from django.core.mail import get_connection
+        kwargs["connection"] = get_connection(**conn_params)
+
+    msg = EmailMessage(**kwargs)
     msg.content_subtype = "html"
 
     with open(pdf_path, "rb") as f:
@@ -42,8 +56,10 @@ def send_report_email(report) -> None:
     logger.info("Report email sent to %s for %s", recipients, report)
 
 
-def _build_body(report) -> str:
-    from django.conf import settings
+def _build_body(report, company_name: str = None) -> str:
+    if not company_name:
+        from django.conf import settings
+        company_name = settings.COMPANY_NAME
 
     company = settings.COMPANY_NAME
     month = report.month_label
@@ -53,7 +69,7 @@ def _build_body(report) -> str:
     <html><body style="font-family:Arial,sans-serif;color:#1f2937;line-height:1.6;">
     <div style="max-width:600px;margin:0 auto;">
       <div style="background:#1d4ed8;padding:20px 24px;border-radius:8px 8px 0 0;">
-        <h1 style="color:#fff;margin:0;font-size:18pt;">{company}</h1>
+        <h1 style="color:#fff;margin:0;font-size:18pt;">{company_name}</h1>
         <p style="color:#bfdbfe;margin:4px 0 0;">Relatório Gerencial Mensal</p>
       </div>
       <div style="background:#f8fafc;padding:24px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;">
@@ -76,7 +92,7 @@ def _build_body(report) -> str:
         </p>
         <p style="margin-top:20px;">
           Atenciosamente,<br>
-          <strong>Equipe {company}</strong>
+          <strong>Equipe {company_name}</strong>
         </p>
       </div>
       <p style="font-size:8pt;color:#9ca3af;text-align:center;margin-top:12px;">

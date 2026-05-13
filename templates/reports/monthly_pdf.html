@@ -313,7 +313,7 @@
   </div>
 </div>
 
-<!-- Uptime bar -->
+<!-- Uptime bar geral -->
 <div style="margin-bottom:16px;">
   <div style="font-size:9pt;color:#374151;margin-bottom:4px;">Disponibilidade geral: <strong>{{ prtg.uptime_percent }}%</strong></div>
   <div class="uptime-bar-bg">
@@ -321,8 +321,47 @@
   </div>
 </div>
 
-<!-- Devices table -->
-{% if prtg.devices %}
+<!-- Por grupo PRTG (múltiplos endereços) -->
+{% if prtg.groups %}
+{% for group in prtg.groups %}
+<div class="section-title" style="font-size:10.5pt;">
+  3.{{ forloop.counter }} {{ group.label }}
+  {% if group.error %}<span style="color:#dc2626;font-size:8pt;"> — Erro: {{ group.error }}</span>{% endif %}
+</div>
+{% if not group.error %}
+<div class="kpi-grid" style="margin-bottom:10px;">
+  <div class="kpi-card green"><div class="kpi-value" style="font-size:16pt;">{{ group.sensors_ok }}</div><div class="kpi-label">OK</div></div>
+  <div class="kpi-card yellow"><div class="kpi-value" style="font-size:16pt;">{{ group.sensors_warning }}</div><div class="kpi-label">Atenção</div></div>
+  <div class="kpi-card red"><div class="kpi-value" style="font-size:16pt;">{{ group.sensors_error }}</div><div class="kpi-label">Erro</div></div>
+  <div class="kpi-card"><div class="kpi-value" style="font-size:16pt;">{{ group.uptime_percent }}%</div><div class="kpi-label">Disponib.</div></div>
+</div>
+{% if group.devices %}
+<table>
+  <thead>
+    <tr>
+      <th>Dispositivo</th><th>Host</th>
+      <th style="text-align:right;width:50px;">✓ OK</th>
+      <th style="text-align:right;width:60px;">⚠ Atenção</th>
+      <th style="text-align:right;width:50px;">✗ Erro</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for dev in group.devices %}
+    <tr>
+      <td>{{ dev.name }}</td>
+      <td style="font-size:8pt;color:#6b7280;">{{ dev.host }}</td>
+      <td style="text-align:right;color:#16a34a;">{{ dev.sensors_ok }}</td>
+      <td style="text-align:right;color:#d97706;">{{ dev.sensors_warning }}</td>
+      <td style="text-align:right;color:#dc2626;">{{ dev.sensors_error }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endif %}
+{% endfor %}
+{% elif prtg.devices %}
+<!-- Compatibilidade: config única sem grupos -->
 <div class="section-title" style="font-size:10.5pt;">3.1 Dispositivos Monitorados</div>
 <table>
   <thead>
