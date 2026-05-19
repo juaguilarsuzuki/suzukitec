@@ -133,3 +133,23 @@ PRTG_PASSHASH = env("PRTG_PASSHASH", default="")
 REPORTS_DIR = BASE_DIR / "media" / "reports"
 COMPANY_NAME = env("COMPANY_NAME", default="Suzuki Tec")
 COMPANY_LOGO_URL = env("COMPANY_LOGO_URL", default="")
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {"format": "[%(levelname)s %(asctime)s %(module)s] %(message)s"},
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+    },
+    "root": {"handlers": ["console"], "level": "WARNING"},
+    "loggers": {
+        "django": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+        "apps": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
+    },
+}

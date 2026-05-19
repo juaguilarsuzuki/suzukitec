@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.http import JsonResponse
+from django.shortcuts import redirect
 from django.urls import path
 from django.utils.html import format_html
 from .models import (
@@ -101,14 +102,36 @@ class MilvusContactAdmin(admin.ModelAdmin):
         except Exception as exc:
             self.message_user(request, f"Erro na sincronização: {exc}", level="error")
 
-    def get_actions(self, request):
-        actions = super().get_actions(request)
-        # Adiciona botão de sync mesmo sem seleção
-        return actions
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path("sync/", self.admin_site.admin_view(self._sync_view), name="milvuscontact_sync"),
+        ]
+        return custom + urls
+
+    def _sync_view(self, request):
+        from apps.integrations.milvus import MilvusClient
+        try:
+            api = MilvusClient()
+            contacts = api.list_contacts()
+            created = updated = 0
+            for c in contacts:
+                obj, is_new = MilvusContact.objects.update_or_create(
+                    milvus_id=str(c["id"]),
+                    defaults={"name": c["name"]},
+                )
+                if is_new:
+                    created += 1
+                else:
+                    updated += 1
+            self.message_user(request, f"Sincronização concluída: {created} criados, {updated} atualizados.")
+        except Exception as exc:
+            self.message_user(request, f"Erro na sincronização: {exc}", level="error")
+        return redirect("../")
 
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
-        extra_context["has_sync_action"] = True
+        extra_context["sync_url"] = "sync/"
         return super().changelist_view(request, extra_context)
 
 
