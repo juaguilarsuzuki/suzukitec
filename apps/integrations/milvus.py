@@ -1,8 +1,9 @@
 """
-Milvus integration — fetches asset (computer) information for a client.
+Milvus integration — fetches asset information and client list.
 Credentials are read from SystemSettings (admin panel), falling back to .env.
 """
 import logging
+from collections import defaultdict
 from datetime import date
 
 from .base import BaseAPIClient
@@ -33,18 +34,28 @@ class MilvusClient(BaseAPIClient):
     def _headers(self):
         return {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"}
 
+    def list_contacts(self) -> list[dict]:
+        """Returns all clients from Milvus for sync/linking."""
+        data = self._get("/clients", params={"limit": 1000}, headers=self._headers)
+        items = data.get("data", data) if isinstance(data, dict) else data
+        return [
+            {
+                "id": str(i.get("id") or i.get("clientId", "")),
+                "name": i.get("name") or i.get("companyName") or "—",
+            }
+            for i in items
+        ]
+
     def _get_assets(self, client_id: str) -> list[dict]:
         params = {"clientId": client_id, "limit": 500}
         data = self._get("/assets", params=params, headers=self._headers)
         return data.get("data", data) if isinstance(data, dict) else data
 
-    def collect(self, external_id: str, start: date, end: date, extra: dict = None) -> dict:
+    def collect(self, external_id: str, start: date = None, end: date = None, **kwargs) -> dict:
         assets = self._get_assets(external_id)
         return self._process(assets)
 
     def _process(self, assets: list) -> dict:
-        from collections import defaultdict
-
         by_type = defaultdict(int)
         online = offline = with_alerts = 0
         processed = []

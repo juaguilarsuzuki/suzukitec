@@ -1,15 +1,7 @@
 """
-PRTG integration — fetches server monitoring data per client.
-
-Each client can have MULTIPLE PRTG configs (one per server group/location).
-Per-client PRTG credentials are stored in ClientToolConfig.extra_config:
-  {
-    "prtg_url": "https://prtg.empresa.com.br",
-    "prtg_username": "usuario",
-    "prtg_passhash": "hash",   // preferred
-    "prtg_password": "senha"   // fallback if no passhash
-  }
-Global PRTG credentials in .env are used when extra_config is empty.
+PRTG integration — fetches server monitoring data.
+Each ClientPRTGConfig has its own URL, credentials and group_id.
+Multiple configs per client are merged into one aggregated result.
 """
 import logging
 from datetime import date
@@ -20,29 +12,30 @@ logger = logging.getLogger(__name__)
 
 
 class PRTGClient(BaseAPIClient):
-    def __init__(self, base_url: str = None, username: str = None,
-                 passhash: str = None, password: str = None):
-        if base_url:
-            self.base_url = base_url
-            self.username = username or ""
-            self.passhash = passhash or ""
-            self.password = password or ""
-        else:
-            from django.conf import settings
-            self.base_url = settings.PRTG_BASE_URL
-            self.username = settings.PRTG_USERNAME
-            self.passhash = settings.PRTG_PASSHASH
-            self.password = settings.PRTG_PASSWORD
+    def __init__(self, prtg_url: str, username: str, passhash: str):
+        self.base_url = prtg_url.rstrip("/")
+        self.username = username
+        self.passhash = passhash
 
     @property
-    def _auth_params(self) -> dict:
-        if self.passhash:
-            return {"username": self.username, "passhash": self.passhash}
-        return {"username": self.username, "password": self.password}
+    def _auth(self) -> dict:
+        return {"username": self.username, "passhash": self.passhash}
+
+    def _get_sensors(self, group_id: str, columns: str, count: int) -> list[dict]:
+        params = {
+            **self._auth,
+            "content": "sensors",
+            "columns": columns,
+            "filter_group": group_id,
+            "output": "json",
+            "count": count,
+        }
+        data = self._get("/api/table.json", params=params)
+        return data.get("sensors", [])
 
     def _get_devices(self, group_id: str) -> list[dict]:
         params = {
-            **self._auth_params,
+            **self._auth,
             "content": "devices",
             "columns": "objid,name,host,status,upsens,downsens,warnsens,pausedsens",
             "filter_group": group_id,
@@ -52,29 +45,16 @@ class PRTGClient(BaseAPIClient):
         data = self._get("/api/table.json", params=params)
         return data.get("devices", [])
 
-    def _get_sensors(self, group_id: str) -> list[dict]:
-        params = {
-            **self._auth_params,
-            "content": "sensors",
-            "columns": "objid,name,device,status,message,lastup,lastdown",
-            "filter_group": group_id,
-            "output": "json",
-            "count": 1000,
-        }
-        data = self._get("/api/table.json", params=params)
-        return data.get("sensors", [])
-
-    def collect(self, external_id: str, start: date, end: date, extra: dict = None) -> dict:
-        extra = extra or {}
-        group_id = extra.get("group_id", external_id)
+    def collect_group(self, group_id: str, columns: str, count: int) -> dict:
+        sensors = self._get_sensors(group_id, columns, count)
         devices = self._get_devices(group_id)
-        sensors = self._get_sensors(group_id)
-        return self._process(devices, sensors)
+        return self._process(sensors, devices)
 
-    def _process(self, devices: list, sensors: list) -> dict:
+    def _process(self, sensors: list, devices: list) -> dict:
         status_map = {"up": "ok", "down": "error", "warning": "warning", "paused": "paused"}
 
         sensors_ok = sensors_warning = sensors_error = sensors_paused = 0
+        sensor_rows = []
         for s in sensors:
             raw = (s.get("status") or "").lower()
             mapped = next((v for k, v in status_map.items() if k in raw), "unknown")
@@ -86,6 +66,14 @@ class PRTGClient(BaseAPIClient):
                 sensors_error += 1
             elif mapped == "paused":
                 sensors_paused += 1
+            sensor_rows.append({
+                "objid": s.get("objid", ""),
+                "device": s.get("device", "—"),
+                "sensor": s.get("sensor") or s.get("name", "—"),
+                "status": mapped,
+                "lastvalue": s.get("lastvalue", "—"),
+                "message": s.get("message", "—"),
+            })
 
         total_active = sensors_ok + sensors_warning + sensors_error
         uptime = round((sensors_ok / total_active) * 100, 2) if total_active else 0.0
@@ -105,10 +93,10 @@ class PRTGClient(BaseAPIClient):
 
         top_alerts = [
             {
-                "sensor": s.get("name", "—"),
+                "sensor": s.get("sensor") or s.get("name", "—"),
                 "device": s.get("device", "—"),
                 "message": s.get("message", "—"),
-                "since": (s.get("lastdown") or s.get("lastup") or "")[:16],
+                "lastvalue": s.get("lastvalue", "—"),
             }
             for s in sensors
             if "down" in (s.get("status") or "").lower() or "warning" in (s.get("status") or "").lower()
@@ -122,18 +110,13 @@ class PRTGClient(BaseAPIClient):
             "sensors_paused": sensors_paused,
             "uptime_percent": uptime,
             "devices": processed_devices,
+            "sensor_rows": sensor_rows,
             "top_alerts": top_alerts,
         }
 
 
-def collect_prtg_for_client(configs: list, start: date, end: date) -> dict:
-    """
-    Collects and merges PRTG data from all active PRTG configs of a client.
-    Returns a dict with aggregated totals and a 'groups' list (one per config).
-    """
-    if not configs:
-        return None
-
+def collect_prtg_for_client(configs, start: date, end: date) -> dict:
+    """Collects and merges PRTG data from all active configs of a client."""
     groups = []
     totals = {
         "total_sensors": 0, "sensors_ok": 0, "sensors_warning": 0,
@@ -142,37 +125,29 @@ def collect_prtg_for_client(configs: list, start: date, end: date) -> dict:
     }
 
     for config in configs:
-        extra = config.extra_config or {}
-        label = config.label or config.external_id
-
-        client = PRTGClient(
-            base_url=extra.get("prtg_url") or None,
-            username=extra.get("prtg_username") or None,
-            passhash=extra.get("prtg_passhash") or None,
-            password=extra.get("prtg_password") or None,
-        )
-
         try:
-            data = client.collect(config.external_id, start, end, extra)
-            data["label"] = label
+            api = PRTGClient(
+                prtg_url=config.prtg_url,
+                username=config.username,
+                passhash=config.passhash,
+            )
+            data = api.collect_group(
+                group_id=config.group_id,
+                columns=config.columns,
+                count=config.count,
+            )
+            data["label"] = config.label
             groups.append(data)
-
             for key in ("total_sensors", "sensors_ok", "sensors_warning", "sensors_error", "sensors_paused"):
                 totals[key] += data.get(key, 0)
             totals["devices"].extend(data.get("devices", []))
             totals["top_alerts"].extend(data.get("top_alerts", []))
-
         except Exception as exc:
-            logger.error("PRTG collect failed for config %s: %s", config, exc)
-            groups.append({"label": label, "error": str(exc)})
+            logger.error("PRTG failed for config %s: %s", config, exc)
+            groups.append({"label": config.label, "error": str(exc)})
 
     total_active = totals["sensors_ok"] + totals["sensors_warning"] + totals["sensors_error"]
-    totals["uptime_percent"] = (
-        round((totals["sensors_ok"] / total_active) * 100, 2) if total_active else 0.0
-    )
+    totals["uptime_percent"] = round((totals["sensors_ok"] / total_active) * 100, 2) if total_active else 0.0
     totals["groups"] = groups
-    totals["top_alerts"] = sorted(
-        totals["top_alerts"], key=lambda x: x.get("since", ""), reverse=True
-    )[:20]
-
+    totals["top_alerts"] = totals["top_alerts"][:20]
     return totals

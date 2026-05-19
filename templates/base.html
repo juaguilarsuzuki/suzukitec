@@ -47,8 +47,8 @@
       </a>
     </li>
     <li class="nav-item">
-      <a href="/admin/reports/monthlyreport/" class="nav-link">
-        <i class="bi bi-file-earmark-bar-graph-fill me-2"></i>Relatórios
+      <a href="{% url 'report_generator' %}" class="nav-link {% block nav_reports %}{% endblock %}">
+        <i class="bi bi-file-earmark-bar-graph-fill me-2"></i>Gerar Relatório
       </a>
     </li>
     <li class="nav-item">

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Gerar Relatório — Suzuki Tec{% endblock %}
+{% block page_title %}Gerar Relatório{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-8 col-lg-6">
+
+    <div class="card p-4 mb-4">
+      <h5 class="fw-semibold mb-4"><i class="bi bi-file-earmark-bar-graph me-2 text-primary"></i>Novo Relatório</h5>
+
+      <form method="post" action="{% url 'generate_report' %}">
+        {% csrf_token %}
+
+        <!-- Cliente -->
+        <div class="mb-4">
+          <label class="form-label fw-medium">Cliente</label>
+          <select name="client_id" class="form-select form-select-lg" required>
+            <option value="">Selecione o cliente...</option>
+            {% for client in clients %}
+            <option value="{{ client.pk }}">{{ client.name }}{% if client.company_name %} — {{ client.company_name }}{% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Período -->
+        <div class="mb-4">
+          <label class="form-label fw-medium">Período de referência</label>
+          <div class="row g-2">
+            <div class="col-7">
+              <select name="month" class="form-select" required>
+                {% for num, name in months %}
+                <option value="{{ num }}" {% if num == default_month %}selected{% endif %}>{{ name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-5">
+              <select name="year" class="form-select" required>
+                {% for y in years %}
+                <option value="{{ y }}" {% if y == default_year %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="d-grid">
+          <button type="submit" class="btn btn-primary btn-lg">
+            <i class="bi bi-gear me-2"></i>Gerar e Visualizar Relatório
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Relatórios recentes -->
+    <div class="card">
+      <div class="card-header bg-white fw-semibold py-3">
+        <i class="bi bi-clock-history me-2 text-primary"></i>Relatórios Recentes
+      </div>
+      <div class="list-group list-group-flush">
+        {% for r in recent_reports %}
+        <a href="{% url 'report_detail' r.pk %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+          <div>
+            <div class="fw-medium">{{ r.client.name }}</div>
+            <small class="text-muted">{{ r.month_label }}</small>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge-status badge-{{ r.status }}">{{ r.get_status_display }}</span>
+            {% if r.pdf_file %}
+            <a href="{% url 'download_pdf' r.pk %}" class="btn btn-sm btn-outline-secondary py-0" onclick="event.stopPropagation()">
+              <i class="bi bi-download"></i>
+            </a>
+            {% endif %}
+          </div>
+        </a>
+        {% empty %}
+        <div class="list-group-item text-muted text-center py-4">Nenhum relatório gerado ainda.</div>
+        {% endfor %}
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

@@ -1,31 +1,25 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import Client, ClientToolConfig, SystemSettings
+from .models import (
+    Client, ClientDigisacConfig, ClientMilvusConfig,
+    ClientPRTGConfig, MilvusContact, SystemSettings,
+)
 
 
 @admin.register(SystemSettings)
 class SystemSettingsAdmin(admin.ModelAdmin):
     fieldsets = (
-        ("Empresa", {
-            "fields": ("company_name", "company_logo_url"),
-        }),
+        ("Empresa", {"fields": ("company_name", "company_logo_url")}),
         ("E-mail (SMTP)", {
-            "fields": (
-                "email_host", "email_port", "email_use_tls",
-                "email_host_user", "email_host_password", "default_from_email",
-            ),
+            "fields": ("email_host", "email_port", "email_use_tls",
+                       "email_host_user", "email_host_password", "default_from_email"),
             "description": (
-                "Configure o servidor de e-mail para envio dos relatórios. "
                 "Para Gmail, gere uma <strong>Senha de App</strong> em "
                 "Conta Google → Segurança → Senhas de app."
             ),
         }),
-        ("Digisac", {
-            "fields": ("digisac_base_url", "digisac_token"),
-        }),
-        ("Milvus", {
-            "fields": ("milvus_base_url", "milvus_token"),
-        }),
+        ("Digisac", {"fields": ("digisac_base_url", "digisac_token")}),
+        ("Milvus", {"fields": ("milvus_base_url", "milvus_token")}),
     )
     readonly_fields = ("updated_at",)
 
@@ -36,24 +30,72 @@ class SystemSettingsAdmin(admin.ModelAdmin):
         return False
 
     def changelist_view(self, request, extra_context=None):
-        # Redireciona direto para a tela de edição do registro único
         from django.shortcuts import redirect
         obj, _ = SystemSettings.objects.get_or_create(pk=1)
         return redirect(f"/admin/clients/systemsettings/{obj.pk}/change/")
 
 
-class ClientToolConfigInline(admin.TabularInline):
-    model = ClientToolConfig
+@admin.register(MilvusContact)
+class MilvusContactAdmin(admin.ModelAdmin):
+    list_display = ("name", "milvus_id", "digisac_pessoa_id", "synced_at")
+    search_fields = ("name", "milvus_id", "digisac_pessoa_id")
+    readonly_fields = ("synced_at",)
+    fields = ("name", "milvus_id", "digisac_pessoa_id", "synced_at")
+    actions = ["sync_from_milvus"]
+
+    @admin.action(description="Sincronizar clientes da API Milvus")
+    def sync_from_milvus(self, request, queryset):
+        from apps.integrations.milvus import MilvusClient
+        try:
+            api = MilvusClient()
+            contacts = api.list_contacts()
+            created = updated = 0
+            for c in contacts:
+                obj, is_new = MilvusContact.objects.update_or_create(
+                    milvus_id=str(c["id"]),
+                    defaults={"name": c["name"]},
+                )
+                if is_new:
+                    created += 1
+                else:
+                    updated += 1
+            self.message_user(request, f"Sincronização concluída: {created} criados, {updated} atualizados.")
+        except Exception as exc:
+            self.message_user(request, f"Erro na sincronização: {exc}", level="error")
+
+
+class DigisacConfigInline(admin.StackedInline):
+    model = ClientDigisacConfig
+    extra = 0
+    max_num = 1
+    fields = ("department_id", "pessoa_id", "is_active")
+    verbose_name = "Configuração Digisac"
+    verbose_name_plural = "Digisac"
+
+
+class MilvusConfigInline(admin.StackedInline):
+    model = ClientMilvusConfig
+    extra = 0
+    max_num = 1
+    fields = ("client_id", "is_active")
+    verbose_name = "Configuração Milvus"
+    verbose_name_plural = "Milvus"
+
+
+class PRTGConfigInline(admin.TabularInline):
+    model = ClientPRTGConfig
     extra = 1
-    fields = ("tool", "label", "external_id", "extra_config", "is_active")
+    fields = ("label", "prtg_url", "username", "passhash", "group_id", "columns", "count", "is_active")
+    verbose_name = "Grupo PRTG"
+    verbose_name_plural = "PRTG — Grupos de Monitoramento"
 
 
 @admin.register(Client)
 class ClientAdmin(admin.ModelAdmin):
-    list_display = ("name", "company_name", "email", "is_active", "send_report", "report_count")
+    list_display = ("name", "company_name", "email", "milvus_contact", "is_active", "send_report", "report_count")
     list_filter = ("is_active", "send_report")
     search_fields = ("name", "company_name", "cnpj", "email")
-    inlines = [ClientToolConfigInline]
+    inlines = [DigisacConfigInline, MilvusConfigInline, PRTGConfigInline]
     readonly_fields = ("created_at", "updated_at")
     fieldsets = (
         ("Identificação", {
@@ -61,6 +103,14 @@ class ClientAdmin(admin.ModelAdmin):
         }),
         ("Contato", {
             "fields": ("email", "email_cc", "phone")
+        }),
+        ("Vínculo com Milvus / Digisac", {
+            "fields": ("milvus_contact",),
+            "description": (
+                "Selecione o cliente correspondente na base do Milvus. "
+                "O ID da PESSOA no Digisac será preenchido automaticamente "
+                "conforme o vínculo cadastrado em <strong>Contatos Milvus</strong>."
+            ),
         }),
         ("Configurações", {
             "fields": ("is_active", "send_report", "notes")
@@ -95,10 +145,3 @@ class ClientAdmin(admin.ModelAdmin):
             )
             count += 1
         self.message_user(request, f"{count} relatório(s) enfileirado(s) para geração.")
-
-
-@admin.register(ClientToolConfig)
-class ClientToolConfigAdmin(admin.ModelAdmin):
-    list_display = ("client", "tool", "label", "external_id", "is_active")
-    list_filter = ("tool", "is_active")
-    search_fields = ("client__name", "external_id", "label")

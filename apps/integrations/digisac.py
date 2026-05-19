@@ -1,8 +1,9 @@
 """
-Digisac integration — fetches tickets, service summaries and ratings.
+Digisac integration — fetches tickets, summaries and ratings.
 Credentials are read from SystemSettings (admin panel), falling back to .env.
 """
 import logging
+from collections import defaultdict
 from datetime import date
 
 from .base import BaseAPIClient
@@ -33,36 +34,37 @@ class DigisacClient(BaseAPIClient):
     def _headers(self):
         return {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"}
 
-    def _get_tickets(self, department_id: str, start: date, end: date) -> list[dict]:
+    def _get_tickets(self, department_id: str, pessoa_id: str, start: date, end: date) -> list:
         params = {
             "departmentId": department_id,
             "startDate": start.isoformat(),
             "endDate": end.isoformat(),
             "limit": 1000,
         }
+        if pessoa_id:
+            params["pessoaId"] = pessoa_id
         data = self._get("/tickets", params=params, headers=self._headers)
         return data.get("data", data) if isinstance(data, dict) else data
 
-    def _get_ratings(self, department_id: str, start: date, end: date) -> list[dict]:
+    def _get_ratings(self, department_id: str, pessoa_id: str, start: date, end: date) -> list:
         params = {
             "departmentId": department_id,
             "startDate": start.isoformat(),
             "endDate": end.isoformat(),
             "limit": 1000,
         }
+        if pessoa_id:
+            params["pessoaId"] = pessoa_id
         data = self._get("/ratings", params=params, headers=self._headers)
         return data.get("data", data) if isinstance(data, dict) else data
 
-    def collect(self, external_id: str, start: date, end: date, extra: dict = None) -> dict:
-        extra = extra or {}
-        department_id = extra.get("department_id", external_id)
-        tickets = self._get_tickets(department_id, start, end)
-        ratings = self._get_ratings(department_id, start, end)
+    def collect(self, department_id: str, start: date, end: date,
+                pessoa_id: str = "", **kwargs) -> dict:
+        tickets = self._get_tickets(department_id, pessoa_id, start, end)
+        ratings = self._get_ratings(department_id, pessoa_id, start, end)
         return self._process(tickets, ratings)
 
     def _process(self, tickets: list, ratings: list) -> dict:
-        from collections import defaultdict
-
         open_count = sum(1 for t in tickets if t.get("status") in ("open", "aberto"))
         closed_count = sum(1 for t in tickets if t.get("status") in ("closed", "fechado", "resolved"))
 
@@ -74,7 +76,6 @@ class DigisacClient(BaseAPIClient):
             t.get("resolutionMinutes") or t.get("resolution_minutes", 0)
             for t in tickets if t.get("resolutionMinutes") or t.get("resolution_minutes")
         ]
-
         avg_first = round(sum(first_responses) / len(first_responses), 1) if first_responses else 0
         avg_res = round(sum(resolutions) / len(resolutions), 1) if resolutions else 0
 
@@ -96,8 +97,7 @@ class DigisacClient(BaseAPIClient):
             cat = t.get("category") or t.get("type") or "Sem categoria"
             by_cat[cat] += 1
         tickets_by_category = [
-            {"category": c, "count": n}
-            for c, n in sorted(by_cat.items(), key=lambda x: -x[1])
+            {"category": c, "count": n} for c, n in sorted(by_cat.items(), key=lambda x: -x[1])
         ]
 
         agent_tickets = defaultdict(list)
@@ -111,31 +111,28 @@ class DigisacClient(BaseAPIClient):
             if score:
                 agent_ratings[agent].append(score)
 
-        top_agents = []
-        for agent, tks in agent_tickets.items():
-            ag_scores = agent_ratings.get(agent, [])
-            top_agents.append({
+        top_agents = sorted([
+            {
                 "name": agent,
                 "tickets": len(tks),
-                "avg_score": round(sum(ag_scores) / len(ag_scores), 2) if ag_scores else None,
-            })
-        top_agents.sort(key=lambda x: -x["tickets"])
+                "avg_score": round(sum(agent_ratings.get(agent, [])) / len(agent_ratings[agent]), 2)
+                if agent_ratings.get(agent) else None,
+            }
+            for agent, tks in agent_tickets.items()
+        ], key=lambda x: -x["tickets"])
 
         closed_tickets = [t for t in tickets if t.get("status") in ("closed", "fechado", "resolved")]
-        ticket_samples = [
-            {
-                "id": str(t.get("id") or t.get("ticketId", "")),
+        ratings_by_ticket = {str(r.get("ticketId") or r.get("ticket_id", "")): r for r in ratings}
+        ticket_samples = []
+        for t in closed_tickets[:10]:
+            tid = str(t.get("id") or t.get("ticketId", ""))
+            r = ratings_by_ticket.get(tid)
+            ticket_samples.append({
+                "id": tid,
                 "subject": t.get("subject") or t.get("title", "—"),
                 "status": t.get("status", "—"),
-                "score": None,
-            }
-            for t in closed_tickets[:10]
-        ]
-        ratings_by_ticket = {str(r.get("ticketId") or r.get("ticket_id", "")): r for r in ratings}
-        for sample in ticket_samples:
-            r = ratings_by_ticket.get(sample["id"])
-            if r:
-                sample["score"] = r.get("score") or r.get("rating")
+                "score": r.get("score") or r.get("rating") if r else None,
+            })
 
         return {
             "total_tickets": len(tickets),
