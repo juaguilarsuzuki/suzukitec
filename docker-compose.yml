@@ -28,7 +28,7 @@ services:
       - .:/app
       - media_data:/app/media
     ports:
-      - "5000:8000"
+      - "8080:8000"
     env_file: .env
     environment:
       DATABASE_URL: postgres://suzuki:suzuki@db:5432/suzukitec
