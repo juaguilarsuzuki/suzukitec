@@ -150,6 +150,7 @@ LOGGING = {
     "loggers": {
         "django": {"handlers": ["console"], "level": "WARNING", "propagate": False},
         "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+        "django.security.csrf": {"handlers": ["console"], "level": "CRITICAL", "propagate": False},
         "apps": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
     },
 }
