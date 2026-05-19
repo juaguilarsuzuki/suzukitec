@@ -32,11 +32,15 @@ class MilvusClient(BaseAPIClient):
 
     @property
     def _headers(self):
-        return {"Authorization": self.token, "Content-Type": "application/json"}
+        return {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"}
 
     def list_contacts(self) -> list[dict]:
         """Returns all clients from Milvus for sync/linking."""
-        data = self._get("/cliente/busca", headers=self._headers)
+        data = self._post(
+            "/cliente/busca",
+            payload={"pagina": 1, "registros_por_pagina": 1000},
+            headers=self._headers,
+        )
         items = data.get("data", data) if isinstance(data, dict) else data
         if not isinstance(items, list):
             items = []
@@ -56,9 +60,9 @@ class MilvusClient(BaseAPIClient):
         ]
 
     def _get_assets(self, client_id: str) -> list[dict]:
-        data = self._get(
+        data = self._post(
             "/ativo/busca",
-            params={"idCliente": client_id},
+            payload={"idCliente": client_id, "pagina": 1, "registros_por_pagina": 1000},
             headers=self._headers,
         )
         items = data.get("data", data) if isinstance(data, dict) else data
