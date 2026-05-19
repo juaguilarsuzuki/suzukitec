@@ -1,4 +1,6 @@
 from django.contrib import admin
+from django.http import JsonResponse
+from django.urls import path
 from django.utils.html import format_html
 from .models import (
     Client, ClientDigisacConfig, ClientMilvusConfig,
@@ -8,6 +10,7 @@ from .models import (
 
 @admin.register(SystemSettings)
 class SystemSettingsAdmin(admin.ModelAdmin):
+    change_form_template = "admin/clients/systemsettings/change_form.html"
     fieldsets = (
         ("Empresa", {"fields": ("company_name", "company_logo_url")}),
         ("E-mail (SMTP)", {
@@ -18,8 +21,14 @@ class SystemSettingsAdmin(admin.ModelAdmin):
                 "Conta Google → Segurança → Senhas de app."
             ),
         }),
-        ("Digisac", {"fields": ("digisac_base_url", "digisac_token")}),
-        ("Milvus", {"fields": ("milvus_base_url", "milvus_token")}),
+        ("Digisac", {
+            "fields": ("digisac_base_url", "digisac_token"),
+            "description": "Token de autenticação da API Digisac.",
+        }),
+        ("Milvus", {
+            "fields": ("milvus_base_url", "milvus_token"),
+            "description": "Token de autenticação da API Milvus.",
+        }),
     )
     readonly_fields = ("updated_at",)
 
@@ -34,16 +43,45 @@ class SystemSettingsAdmin(admin.ModelAdmin):
         obj, _ = SystemSettings.objects.get_or_create(pk=1)
         return redirect(f"/admin/clients/systemsettings/{obj.pk}/change/")
 
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path("test-digisac/", self.admin_site.admin_view(self._test_digisac), name="test_digisac"),
+            path("test-milvus/", self.admin_site.admin_view(self._test_milvus), name="test_milvus"),
+        ]
+        return custom + urls
+
+    def _test_digisac(self, request):
+        try:
+            from apps.integrations.digisac import DigisacClient
+            api = DigisacClient()
+            resp = api._get("/departments", headers=api._headers)
+            return JsonResponse({"ok": True, "message": f"Conexão OK — {len(resp) if isinstance(resp, list) else 'dados recebidos'}"})
+        except Exception as exc:
+            return JsonResponse({"ok": False, "message": str(exc)})
+
+    def _test_milvus(self, request):
+        try:
+            from apps.integrations.milvus import MilvusClient
+            api = MilvusClient()
+            contacts = api.list_contacts()
+            return JsonResponse({"ok": True, "message": f"Conexão OK — {len(contacts)} cliente(s) encontrado(s)"})
+        except Exception as exc:
+            return JsonResponse({"ok": False, "message": str(exc)})
+
 
 @admin.register(MilvusContact)
 class MilvusContactAdmin(admin.ModelAdmin):
     list_display = ("name", "milvus_id", "digisac_pessoa_id", "synced_at")
     search_fields = ("name", "milvus_id", "digisac_pessoa_id")
-    readonly_fields = ("synced_at",)
+    readonly_fields = ("milvus_id", "name", "synced_at")
     fields = ("name", "milvus_id", "digisac_pessoa_id", "synced_at")
     actions = ["sync_from_milvus"]
 
-    @admin.action(description="Sincronizar clientes da API Milvus")
+    def has_add_permission(self, request):
+        return False
+
+    @admin.action(description="🔄 Sincronizar clientes da API Milvus")
     def sync_from_milvus(self, request, queryset):
         from apps.integrations.milvus import MilvusClient
         try:
@@ -63,13 +101,22 @@ class MilvusContactAdmin(admin.ModelAdmin):
         except Exception as exc:
             self.message_user(request, f"Erro na sincronização: {exc}", level="error")
 
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        # Adiciona botão de sync mesmo sem seleção
+        return actions
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        extra_context["has_sync_action"] = True
+        return super().changelist_view(request, extra_context)
+
 
 class DigisacConfigInline(admin.StackedInline):
     model = ClientDigisacConfig
     extra = 0
     max_num = 1
     fields = ("department_id", "pessoa_id", "is_active")
-    verbose_name = "Configuração Digisac"
     verbose_name_plural = "Digisac"
 
 
@@ -78,7 +125,6 @@ class MilvusConfigInline(admin.StackedInline):
     extra = 0
     max_num = 1
     fields = ("client_id", "is_active")
-    verbose_name = "Configuração Milvus"
     verbose_name_plural = "Milvus"
 
 
@@ -98,27 +144,18 @@ class ClientAdmin(admin.ModelAdmin):
     inlines = [DigisacConfigInline, MilvusConfigInline, PRTGConfigInline]
     readonly_fields = ("created_at", "updated_at")
     fieldsets = (
-        ("Identificação", {
-            "fields": ("name", "company_name", "cnpj")
-        }),
-        ("Contato", {
-            "fields": ("email", "email_cc", "phone")
-        }),
+        ("Identificação", {"fields": ("name", "company_name", "cnpj")}),
+        ("Contato", {"fields": ("email", "email_cc", "phone")}),
         ("Vínculo com Milvus / Digisac", {
             "fields": ("milvus_contact",),
             "description": (
-                "Selecione o cliente correspondente na base do Milvus. "
+                "Selecione o cliente importado do Milvus. "
                 "O ID da PESSOA no Digisac será preenchido automaticamente "
-                "conforme o vínculo cadastrado em <strong>Contatos Milvus</strong>."
+                "conforme o cadastro em <strong>Contatos Milvus</strong>."
             ),
         }),
-        ("Configurações", {
-            "fields": ("is_active", "send_report", "notes")
-        }),
-        ("Auditoria", {
-            "fields": ("created_at", "updated_at"),
-            "classes": ("collapse",),
-        }),
+        ("Configurações", {"fields": ("is_active", "send_report", "notes")}),
+        ("Auditoria", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
     )
     actions = ["trigger_report_generation"]
 
@@ -135,7 +172,6 @@ class ClientAdmin(admin.ModelAdmin):
         from datetime import date
         from dateutil.relativedelta import relativedelta
         from apps.reports.tasks import generate_client_report, send_client_report
-
         prev = date.today() - relativedelta(months=1)
         count = 0
         for client in queryset.filter(is_active=True):

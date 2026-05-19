@@ -1,0 +1,32 @@
+{% extends "admin/change_form.html" %}
+{% block after_related_objects %}
+<div style="margin:20px 0;padding:16px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;">
+  <strong style="color:#0369a1;">🔌 Testar Conexão com as APIs</strong>
+  <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
+    <button type="button" onclick="testApi('digisac')"
+      style="padding:8px 16px;background:#1d4ed8;color:#fff;border:none;border-radius:6px;cursor:pointer;">
+      Testar Digisac
+    </button>
+    <button type="button" onclick="testApi('milvus')"
+      style="padding:8px 16px;background:#059669;color:#fff;border:none;border-radius:6px;cursor:pointer;">
+      Testar Milvus
+    </button>
+  </div>
+  <div id="test-result" style="margin-top:12px;font-size:13px;"></div>
+</div>
+<script>
+function testApi(tool) {
+  var result = document.getElementById('test-result');
+  result.innerHTML = '⏳ Testando conexão com ' + tool + '...';
+  fetch('/admin/clients/systemsettings/test-' + tool + '/')
+    .then(r => r.json())
+    .then(data => {
+      var color = data.ok ? '#166534' : '#991b1b';
+      var bg = data.ok ? '#dcfce7' : '#fee2e2';
+      var icon = data.ok ? '✅' : '❌';
+      result.innerHTML = '<span style="background:' + bg + ';color:' + color + ';padding:6px 12px;border-radius:6px;">' + icon + ' ' + data.message + '</span>';
+    })
+    .catch(() => { result.innerHTML = '❌ Erro ao testar.'; });
+}
+</script>
+{% endblock %}
