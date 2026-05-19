@@ -35,7 +35,7 @@ def collect_client_data(client: Client, start: date, end: date) -> dict:
         mcfg = client.milvus_config
         if mcfg and mcfg.is_active:
             result["milvus"] = MilvusClient().collect(
-                external_id=mcfg.client_id,
+                external_id=mcfg.milvus_client_id,
                 start=start,
                 end=end,
             )

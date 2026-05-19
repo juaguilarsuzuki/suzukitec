@@ -147,7 +147,7 @@ class ClientMilvusConfig(models.Model):
         Client, on_delete=models.CASCADE, related_name="milvus_config",
         verbose_name="Cliente"
     )
-    client_id = models.CharField(
+    milvus_client_id = models.CharField(
         "ID do Cliente no Milvus", max_length=200,
         help_text="ID do cliente na plataforma Milvus."
     )

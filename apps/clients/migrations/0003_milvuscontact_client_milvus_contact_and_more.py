@@ -50,7 +50,7 @@ class Migration(migrations.Migration):
             name="ClientMilvusConfig",
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False)),
-                ("client_id", models.CharField(max_length=200, verbose_name="ID do Cliente no Milvus")),
+                ("milvus_client_id", models.CharField(max_length=200, verbose_name="ID do Cliente no Milvus")),
                 ("is_active", models.BooleanField(default=True, verbose_name="Ativo")),
                 ("client", models.OneToOneField(
                     on_delete=django.db.models.deletion.CASCADE,

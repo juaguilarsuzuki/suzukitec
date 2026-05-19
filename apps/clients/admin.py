@@ -124,7 +124,7 @@ class MilvusConfigInline(admin.StackedInline):
     model = ClientMilvusConfig
     extra = 0
     max_num = 1
-    fields = ("client_id", "is_active")
+    fields = ("milvus_client_id", "is_active")
     verbose_name_plural = "Milvus"
 
 
