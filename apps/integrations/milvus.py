@@ -32,24 +32,37 @@ class MilvusClient(BaseAPIClient):
 
     @property
     def _headers(self):
-        return {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"}
+        return {"Authorization": self.token, "Content-Type": "application/json"}
 
     def list_contacts(self) -> list[dict]:
         """Returns all clients from Milvus for sync/linking."""
-        data = self._get("/clients", params={"limit": 1000}, headers=self._headers)
+        data = self._post("/cliente/listagem", payload={}, headers=self._headers)
         items = data.get("data", data) if isinstance(data, dict) else data
+        if not isinstance(items, list):
+            items = []
         return [
             {
-                "id": str(i.get("id") or i.get("clientId", "")),
-                "name": i.get("name") or i.get("companyName") or "—",
+                "id": str(
+                    i.get("id") or i.get("idCliente") or i.get("clientId") or ""
+                ),
+                "name": (
+                    i.get("nomeFantasia") or i.get("razaoSocial")
+                    or i.get("nome") or i.get("name")
+                    or i.get("companyName") or "—"
+                ),
             }
             for i in items
+            if i.get("id") or i.get("idCliente") or i.get("clientId")
         ]
 
     def _get_assets(self, client_id: str) -> list[dict]:
-        params = {"clientId": client_id, "limit": 500}
-        data = self._get("/assets", params=params, headers=self._headers)
-        return data.get("data", data) if isinstance(data, dict) else data
+        data = self._post(
+            "/ativo/listagem",
+            payload={"idCliente": client_id},
+            headers=self._headers,
+        )
+        items = data.get("data", data) if isinstance(data, dict) else data
+        return items if isinstance(items, list) else []
 
     def collect(self, external_id: str, start: date = None, end: date = None, **kwargs) -> dict:
         assets = self._get_assets(external_id)
@@ -61,12 +74,16 @@ class MilvusClient(BaseAPIClient):
         processed = []
 
         for a in assets:
-            status = (a.get("status") or a.get("connectionStatus") or "unknown").lower()
-            asset_type = a.get("type") or a.get("deviceType") or "Computador"
-            alerts = a.get("alertCount") or a.get("alerts") or 0
+            status = (
+                a.get("status") or a.get("statusConexao") or a.get("connectionStatus") or "unknown"
+            ).lower()
+            asset_type = (
+                a.get("tipo") or a.get("type") or a.get("deviceType") or "Computador"
+            )
+            alerts = a.get("alertCount") or a.get("alertas") or a.get("alerts") or 0
 
             by_type[asset_type] += 1
-            if status in ("online", "ativo", "connected"):
+            if status in ("online", "ativo", "connected", "1", "true"):
                 online += 1
             else:
                 offline += 1
@@ -74,11 +91,18 @@ class MilvusClient(BaseAPIClient):
                 with_alerts += 1
 
             processed.append({
-                "id": str(a.get("id") or a.get("assetId", "")),
-                "name": a.get("name") or a.get("hostname") or "—",
+                "id": str(a.get("id") or a.get("idAtivo") or a.get("assetId") or ""),
+                "name": (
+                    a.get("nome") or a.get("name") or a.get("hostname") or "—"
+                ),
                 "type": asset_type,
-                "os": a.get("operatingSystem") or a.get("os") or "—",
-                "last_seen": (a.get("lastSeen") or a.get("last_seen") or "")[:16],
+                "os": (
+                    a.get("sistemaOperacional") or a.get("operatingSystem")
+                    or a.get("os") or "—"
+                ),
+                "last_seen": (
+                    a.get("ultimaConexao") or a.get("lastSeen") or a.get("last_seen") or ""
+                )[:16],
                 "status": status,
                 "alerts": int(alerts),
             })
