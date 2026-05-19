@@ -36,7 +36,7 @@ class MilvusClient(BaseAPIClient):
 
     def list_contacts(self) -> list[dict]:
         """Returns all clients from Milvus for sync/linking."""
-        data = self._post("/cliente/busca", payload={}, headers=self._headers)
+        data = self._get("/cliente/busca", headers=self._headers)
         items = data.get("data", data) if isinstance(data, dict) else data
         if not isinstance(items, list):
             items = []
@@ -56,9 +56,9 @@ class MilvusClient(BaseAPIClient):
         ]
 
     def _get_assets(self, client_id: str) -> list[dict]:
-        data = self._post(
+        data = self._get(
             "/ativo/busca",
-            payload={"idCliente": client_id},
+            params={"idCliente": client_id},
             headers=self._headers,
         )
         items = data.get("data", data) if isinstance(data, dict) else data
