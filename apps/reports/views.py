@@ -154,11 +154,10 @@ def send_report_email(request, report_id):
 @login_required
 @require_POST
 def trigger_report(request, report_id):
-    """Regenera um relatório existente."""
+    """Regenera um relatório existente (sem envio automático)."""
     report = get_object_or_404(MonthlyReport, pk=report_id)
-    from apps.reports.tasks import generate_client_report, send_client_report
+    from apps.reports.tasks import generate_client_report
     generate_client_report.apply_async(
         args=[report.client.pk, report.reference_month.year, report.reference_month.month],
-        link=send_client_report.s(),
     )
     return JsonResponse({"status": "enqueued"})

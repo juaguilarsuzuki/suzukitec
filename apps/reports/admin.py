@@ -51,12 +51,11 @@ class MonthlyReportAdmin(admin.ModelAdmin):
 
     @admin.action(description="Regenerar relatório selecionado")
     def regenerate_report(self, request, queryset):
-        from apps.reports.tasks import generate_client_report, send_client_report
+        from apps.reports.tasks import generate_client_report
         count = 0
         for report in queryset:
             generate_client_report.apply_async(
                 args=[report.client.pk, report.reference_month.year, report.reference_month.month],
-                link=send_client_report.s(),
             )
             count += 1
         self.message_user(request, f"{count} relatório(s) enfileirado(s) para regeneração.")

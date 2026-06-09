@@ -100,7 +100,7 @@ def send_client_report(self, report_id: int) -> dict:
 def generate_all_monthly_reports() -> dict:
     """
     Triggered by Celery Beat on the 1st of every month.
-    Generates and emails reports for the PREVIOUS month.
+    Generates PDFs for the PREVIOUS month. Sending is manual only.
     """
     from apps.clients.models import Client
     from dateutil.relativedelta import relativedelta
@@ -109,14 +109,11 @@ def generate_all_monthly_reports() -> dict:
     prev = today - relativedelta(months=1)
     year, month = prev.year, prev.month
 
-    clients = Client.objects.filter(is_active=True, send_report=True)
+    clients = Client.objects.filter(is_active=True)
     dispatched = []
 
     for client in clients:
-        task = generate_client_report.apply_async(
-            args=[client.pk, year, month],
-            link=send_client_report.s(),
-        )
+        task = generate_client_report.apply_async(args=[client.pk, year, month])
         dispatched.append({"client_id": client.pk, "task_id": str(task.id)})
         logger.info("Dispatched report generation for %s (%s/%s)", client, month, year)
 
