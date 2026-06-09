@@ -1,0 +1,27 @@
+# Mapeamento de clientes entre Milvus, TeamViewer e Conta Azul.
+# Clientes sem todos os três IDs preenchidos são ignorados automaticamente.
+clientes:
+  - nome: "Acme Tecnologia"
+    milvus_cliente_id: "CLI-001"
+    teamviewer_grupo: "Acme - TI"
+    contaazul_cliente_id: "CA-10021"
+    ativo: true
+
+  - nome: "Beta Serviços"
+    milvus_cliente_id: "CLI-002"
+    teamviewer_grupo: "Beta - Suporte"
+    contaazul_cliente_id: "CA-10034"
+    ativo: true
+
+  - nome: "Gamma Consultoria"
+    milvus_cliente_id: "CLI-003"
+    teamviewer_grupo: "Gamma - TI"
+    contaazul_cliente_id: "CA-10058"
+    ativo: true
+
+  # Exemplo de cliente incompleto — será ignorado
+  - nome: "Delta Incompleto"
+    milvus_cliente_id: "CLI-004"
+    teamviewer_grupo: ""
+    contaazul_cliente_id: ""
+    ativo: true
