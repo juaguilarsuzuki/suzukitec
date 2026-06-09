@@ -110,7 +110,8 @@ def get_devices(grupo: str) -> list[dict]:
 
     Em modo mock retorna dados de exemplo; em modo real chama a API TeamViewer.
     """
-    if os.getenv("MODE", "mock").lower() == "mock":
+    _mode = (os.getenv("CONCILIACAO_MODE") or os.getenv("MODE", "mock")).lower()
+    if _mode == "mock":
         logger.debug("TeamViewer [mock] grupo=%s", grupo)
         return [_normalize(d) for d in _mock_devices(grupo)]
 

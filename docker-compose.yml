@@ -51,6 +51,8 @@ services:
       DATABASE_URL: postgres://suzuki:suzuki@db:5432/suzukitec
       REDIS_URL: redis://redis:6379/0
       DJANGO_SETTINGS_MODULE: config.settings.production
+      # PDFs da conciliação vão para o volume media_data (acessível via Django)
+      CONCILIACAO_OUTPUT_DIR: /app/media/conciliacao
     depends_on:
       - web
       - redis
@@ -60,6 +62,7 @@ services:
     command: celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     volumes:
       - .:/app
+      - media_data:/app/media
     env_file: .env
     environment:
       DATABASE_URL: postgres://suzuki:suzuki@db:5432/suzukitec

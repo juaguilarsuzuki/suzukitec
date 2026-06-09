@@ -13,9 +13,9 @@ from datetime import datetime, timezone
 import yaml
 from dotenv import load_dotenv
 
-from src.reconcile import reconcile
-from src.report import generate_pdf
-from src.sources import contaazul, milvus, teamviewer
+from .reconcile import reconcile
+from .report import generate_pdf
+from .sources import contaazul, milvus, teamviewer
 
 # ─── Configuração de logging ──────────────────────────────────────────────────
 logging.basicConfig(
@@ -29,8 +29,13 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "config", "clientes.yaml")
-OUTPUT_DIR = os.getenv("OUTPUT_DIR", "saida")
-PERIODO = os.getenv("PERIODO", datetime.now(timezone.utc).strftime("%B/%Y"))
+# Aceita tanto CONCILIACAO_OUTPUT_DIR (integrado ao Django) quanto OUTPUT_DIR (standalone)
+OUTPUT_DIR = os.getenv("CONCILIACAO_OUTPUT_DIR") or os.getenv("OUTPUT_DIR", "saida")
+PERIODO = (
+    os.getenv("CONCILIACAO_PERIODO")
+    or os.getenv("PERIODO")
+    or datetime.now(timezone.utc).strftime("%B/%Y")
+)
 
 # Período para consulta Conta Azul (mês corrente)
 _hoje = datetime.now(timezone.utc)

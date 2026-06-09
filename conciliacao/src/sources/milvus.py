@@ -122,7 +122,8 @@ def get_devices(cliente_id: str) -> list[dict]:
 
     Em modo mock retorna dados de exemplo; em modo real chama a API Milvus.
     """
-    if os.getenv("MODE", "mock").lower() == "mock":
+    _mode = (os.getenv("CONCILIACAO_MODE") or os.getenv("MODE", "mock")).lower()
+    if _mode == "mock":
         logger.debug("Milvus [mock] cliente=%s", cliente_id)
         return [_normalize(d) for d in _mock_devices(cliente_id)]
 

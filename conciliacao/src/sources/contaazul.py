@@ -126,7 +126,8 @@ def get_faturamento(cliente_id: str, periodo_inicio: str, periodo_fim: str) -> d
             ]
         }
     """
-    if os.getenv("MODE", "mock").lower() == "mock":
+    _mode = (os.getenv("CONCILIACAO_MODE") or os.getenv("MODE", "mock")).lower()
+    if _mode == "mock":
         logger.debug("ContaAzul [mock] cliente_id=%s", cliente_id)
         return _mock_faturamento(cliente_id)
 
