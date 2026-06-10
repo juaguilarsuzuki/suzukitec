@@ -29,9 +29,20 @@ echo -e "${NC}"
 # ── Verificações iniciais ──────────────────────────────────────────────────────
 step "Verificando ambiente"
 
-[[ $EUID -eq 0 ]] && error "Não execute este script como root. Use seu usuário normal (com sudo)."
+# Permite root (comum em VPS), mas avisa sobre boas práticas
+if [[ $EUID -eq 0 ]]; then
+    warn "Executando como root. Recomendado usar um usuário comum em produção."
+    warn "Continuando mesmo assim..."
+    # sudo não é necessário quando já é root
+    SUDO=""
+else
+    SUDO="sudo"
+fi
 
-command -v sudo >/dev/null || error "sudo não encontrado. Instale-o primeiro."
+# Garante que sudo existe (necessário apenas quando não é root)
+if [[ -n "$SUDO" ]]; then
+    command -v sudo >/dev/null || error "sudo não encontrado. Instale-o primeiro."
+fi
 
 OS_ID=$(grep '^ID=' /etc/os-release | cut -d= -f2 | tr -d '"')
 OS_VER=$(grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | tr -d '"')
@@ -188,8 +199,8 @@ clone_repo() {
         warn "Repositório já existe — atualizando..."
         git -C "$INSTALL_DIR" pull
     else
-        sudo mkdir -p "$INSTALL_DIR"
-        sudo chown "$CURRENT_USER":"$CURRENT_USER" "$INSTALL_DIR"
+        $SUDO mkdir -p "$INSTALL_DIR"
+        $SUDO chown "$CURRENT_USER":"$CURRENT_USER" "$INSTALL_DIR"
         git clone "$REPO_URL" "$INSTALL_DIR"
     fi
     success "Repositório pronto em $INSTALL_DIR"
@@ -205,14 +216,14 @@ install_docker_mode() {
         success "Docker já instalado: $(docker --version)"
     else
         info "Baixando e instalando Docker..."
-        curl -fsSL https://get.docker.com | sudo sh
-        sudo usermod -aG docker "$CURRENT_USER"
+        curl -fsSL https://get.docker.com | $SUDO sh
+        $SUDO usermod -aG docker "$CURRENT_USER"
         success "Docker instalado"
     fi
 
     if ! docker compose version &>/dev/null; then
         info "Instalando Docker Compose plugin..."
-        sudo apt-get install -y docker-compose-plugin
+        $SUDO apt-get install -y docker-compose-plugin
         success "Docker Compose instalado"
     else
         success "Docker Compose já disponível: $(docker compose version --short)"
@@ -229,24 +240,24 @@ install_docker_mode() {
     step "Iniciando containers"
     # Garantir que o grupo docker seja aplicado nesta sessão
     sg docker -c "docker compose up -d --build" 2>/dev/null || \
-        sudo docker compose up -d --build
+        $SUDO docker compose up -d --build
 
     info "Aguardando containers ficarem prontos..."
     sleep 15
 
     step "Configurando banco de dados"
     sg docker -c "docker compose exec web python manage.py migrate --noinput" 2>/dev/null || \
-        sudo docker compose exec web python manage.py migrate --noinput
+        $SUDO docker compose exec web python manage.py migrate --noinput
 
     step "Coletando arquivos estáticos"
     sg docker -c "docker compose exec web python manage.py collectstatic --noinput" 2>/dev/null || \
-        sudo docker compose exec web python manage.py collectstatic --noinput
+        $SUDO docker compose exec web python manage.py collectstatic --noinput
 
     step "Criando superusuário administrador"
     echo ""
     warn "Você precisará criar um usuário administrador para acessar o painel."
     sg docker -c "docker compose exec -it web python manage.py createsuperuser" 2>/dev/null || \
-        sudo docker compose exec -it web python manage.py createsuperuser
+        $SUDO docker compose exec -it web python manage.py createsuperuser
 }
 
 # =============================================================================
@@ -255,8 +266,8 @@ install_docker_mode() {
 install_manual_mode() {
 
     step "Instalando dependências do sistema"
-    sudo apt-get update -qq
-    sudo apt-get install -y \
+    $SUDO apt-get update -qq
+    $SUDO apt-get install -y \
         python3 python3-pip python3-venv \
         libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b \
         libffi-dev libcairo2 libgdk-pixbuf2.0-0 \
@@ -266,13 +277,13 @@ install_manual_mode() {
     success "Dependências instaladas"
 
     step "Configurando Redis"
-    sudo systemctl enable redis-server
-    sudo systemctl start redis-server
+    $SUDO systemctl enable redis-server
+    $SUDO systemctl start redis-server
     success "Redis ativo"
 
     step "Configurando PostgreSQL"
     DB_PASS=$(python3 -c "import secrets; print(secrets.token_urlsafe(16))")
-    sudo -u postgres psql <<SQL
+    $SUDO -u postgres psql <<SQL
 DO \$\$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'suzuki') THEN
@@ -318,7 +329,7 @@ SQL
     step "Configurando serviços systemd"
 
     # Gunicorn (Django)
-    sudo tee /etc/systemd/system/suzukitec.service > /dev/null <<EOF
+    $SUDO tee /etc/systemd/system/suzukitec.service > /dev/null <<EOF
 [Unit]
 Description=Suzuki Tec - Django/Gunicorn
 After=network.target postgresql.service redis.service
@@ -337,7 +348,7 @@ WantedBy=multi-user.target
 EOF
 
     # Celery Worker
-    sudo tee /etc/systemd/system/suzukitec-worker.service > /dev/null <<EOF
+    $SUDO tee /etc/systemd/system/suzukitec-worker.service > /dev/null <<EOF
 [Unit]
 Description=Suzuki Tec - Celery Worker
 After=network.target redis.service suzukitec.service
@@ -356,7 +367,7 @@ WantedBy=multi-user.target
 EOF
 
     # Celery Beat
-    sudo tee /etc/systemd/system/suzukitec-beat.service > /dev/null <<EOF
+    $SUDO tee /etc/systemd/system/suzukitec-beat.service > /dev/null <<EOF
 [Unit]
 Description=Suzuki Tec - Celery Beat (Agendador)
 After=network.target redis.service suzukitec.service
@@ -375,14 +386,14 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-    sudo systemctl daemon-reload
-    sudo systemctl enable suzukitec suzukitec-worker suzukitec-beat
-    sudo systemctl start suzukitec suzukitec-worker suzukitec-beat
+    $SUDO systemctl daemon-reload
+    $SUDO systemctl enable suzukitec suzukitec-worker suzukitec-beat
+    $SUDO systemctl start suzukitec suzukitec-worker suzukitec-beat
     success "Serviços systemd ativos"
 
     # ── Nginx ──────────────────────────────────────────────────────────────────
     step "Configurando Nginx"
-    sudo tee /etc/nginx/sites-available/suzukitec > /dev/null <<EOF
+    $SUDO tee /etc/nginx/sites-available/suzukitec > /dev/null <<EOF
 server {
     listen 80;
     server_name ${SERVER_HOST};
@@ -409,10 +420,10 @@ server {
 }
 EOF
 
-    sudo ln -sf /etc/nginx/sites-available/suzukitec /etc/nginx/sites-enabled/
-    sudo rm -f /etc/nginx/sites-enabled/default
-    sudo nginx -t
-    sudo systemctl restart nginx
+    $SUDO ln -sf /etc/nginx/sites-available/suzukitec /etc/nginx/sites-enabled/
+    $SUDO rm -f /etc/nginx/sites-enabled/default
+    $SUDO nginx -t
+    $SUDO systemctl restart nginx
     success "Nginx configurado"
 
     # ── Let's Encrypt (opcional) ───────────────────────────────────────────────
@@ -420,8 +431,8 @@ EOF
     ask "Deseja instalar certificado SSL gratuito (Let's Encrypt)? Requer domínio apontado para este servidor. [s/N]:"
     read -r INSTALL_SSL
     if [[ "${INSTALL_SSL,,}" == "s" || "${INSTALL_SSL,,}" == "sim" ]]; then
-        sudo apt-get install -y certbot python3-certbot-nginx
-        sudo certbot --nginx -d "$SERVER_HOST" --non-interactive --agree-tos -m "$EMAIL_USER" || \
+        $SUDO apt-get install -y certbot python3-certbot-nginx
+        $SUDO certbot --nginx -d "$SERVER_HOST" --non-interactive --agree-tos -m "$EMAIL_USER" || \
             warn "SSL não configurado automaticamente. Execute manualmente: sudo certbot --nginx -d $SERVER_HOST"
     fi
 }
